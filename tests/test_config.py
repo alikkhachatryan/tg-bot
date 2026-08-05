@@ -5,7 +5,7 @@ from app.core.config import Settings
 
 
 def test_defaults_are_safe_for_local_development() -> None:
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None, app_env="development")
 
     assert settings.app_env == "development"
     assert settings.ai_provider == "fake"
