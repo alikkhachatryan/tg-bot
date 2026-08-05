@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 from pydantic import SecretStr
@@ -32,14 +32,18 @@ async def test_polling_entrypoint_closes_bot(monkeypatch: pytest.MonkeyPatch) ->
     session = SimpleNamespace(close=AsyncMock())
     bot = SimpleNamespace(session=session)
     dispatcher = SimpleNamespace(start_polling=AsyncMock())
+    engine = SimpleNamespace(dispose=AsyncMock())
     settings = Settings(_env_file=None)
 
     monkeypatch.setattr(polling, "get_settings", lambda: settings)
     monkeypatch.setattr(polling, "configure_logging", lambda value: None)
     monkeypatch.setattr(polling, "create_bot", lambda value: bot)
     monkeypatch.setattr(polling, "create_dispatcher", lambda: dispatcher)
+    monkeypatch.setattr(polling, "create_engine", lambda value: engine)
+    monkeypatch.setattr(polling, "create_session_factory", lambda value: SimpleNamespace())
 
     await polling.run_polling()
 
-    dispatcher.start_polling.assert_awaited_once_with(bot)
+    dispatcher.start_polling.assert_awaited_once_with(bot, user_service=ANY)
     session.close.assert_awaited_once()
+    engine.dispose.assert_awaited_once()

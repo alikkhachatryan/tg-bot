@@ -2,6 +2,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
+from app.bot.handlers import create_router
 from app.core.config import Settings
 
 
@@ -15,4 +16,6 @@ def create_bot(settings: Settings) -> Bot:
 
 
 def create_dispatcher() -> Dispatcher:
-    return Dispatcher()
+    dispatcher = Dispatcher()
+    dispatcher.include_router(create_router())
+    return dispatcher
