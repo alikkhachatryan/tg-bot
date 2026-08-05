@@ -12,6 +12,9 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
 from app.services.health import HealthService
+from app.services.queue import ArqResumeQueue
+from app.services.resumes import ResumeService
+from app.services.storage import create_storage
 from app.services.telegram_users import TelegramUpdateService, TelegramUserService
 
 
@@ -37,6 +40,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.telegram_update_service = TelegramUpdateService(
             application.state.session_factory, resolved_settings
         )
+        application.state.resume_service = ResumeService(
+            application.state.session_factory,
+            create_storage(resolved_settings),
+            resolved_settings,
+        )
+        application.state.resume_queue = ArqResumeQueue(resolved_settings.redis_url)
         application.state.bot = (
             create_bot(resolved_settings) if resolved_settings.has_telegram_token else None
         )
@@ -46,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             if application.state.bot is not None:
                 await application.state.bot.session.close()
+            await application.state.resume_queue.close()
             await redis.aclose()
             await engine.dispose()
 

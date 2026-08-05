@@ -47,8 +47,8 @@ The schema is introduced stage by stage rather than created mechanically up fron
 | `users` | Internal identity, lifecycle, beta access | status, locale, timestamps |
 | `telegram_accounts` | Telegram identity owned by one user | unique telegram_user_id, username |
 | `consents` | Versioned consent and withdrawal evidence | policy_version, granted_at, revoked_at |
-| `resumes` | Private object metadata and processing status | storage_key, MIME, hashes, status |
-| `resume_parse_runs` | Idempotent extraction/AI attempts | status, parser_version, error_code |
+| `resume_documents` | Private object metadata, extracted text, and processing status | storage_key, MIME, SHA-256, status, error_code |
+| `resume_parse_runs` | AI parsing attempts introduced in stage 4 | status, parser_version, error_code |
 | `candidate_profiles` | Confirmed profile and version | core fields normalized; evidence-rich sections in JSONB |
 | `candidate_skills` | Skills used by deterministic matching | normalized skill, level, experience, evidence |
 | `search_preferences` | Hard filters and notification inputs | roles/countries/timezones arrays; exclusions in JSONB |
@@ -119,4 +119,3 @@ boundaries. External clients have timeouts and are closed during application shu
     audited privileged resume access.
 12. **Security and release:** deletion workflow, privacy policy, audit review, backups,
     full test matrix, documentation, and production checklist.
-

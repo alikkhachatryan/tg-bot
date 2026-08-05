@@ -9,10 +9,12 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stages 1 and 2 establish the deployable foundation and Telegram identity layer: FastAPI,
+Stages 1 through 3 establish the deployable foundation, Telegram identity layer, and
+secure resume ingestion: FastAPI,
 aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
 endpoints, Docker Compose, CI, closed-beta access, versioned consent, durable conversation
-state, protected webhook delivery, update deduplication, and local polling.
+state, protected webhook delivery, update deduplication, local polling, private PDF/DOCX
+storage, and background text extraction.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -65,6 +67,17 @@ Production sends updates to `POST /telegram/webhook` and must include the config
 claims are released for retry, and stale processing claims can be recovered. Resume
 documents are rejected until the current privacy/AI-processing consent is accepted.
 
+Accepted resumes must have matching PDF or DOCX extension, MIME type, size, and file
+signature. The server generates the private storage key; the original name is retained
+only as metadata. arq changes the status from `queued` to `processing`, then to
+`processed` or `failed`, and sends a user-safe Telegram result. Image-only PDFs are
+reported as lacking a text layer; OCR is intentionally not enabled in the MVP.
+
+Local files are written below `LOCAL_STORAGE_PATH`. Production requires
+`STORAGE_DRIVER=s3`; configure the private bucket with `S3_ENDPOINT`, `S3_BUCKET`,
+`S3_ACCESS_KEY`, and `S3_SECRET_KEY`. Resume objects are never exposed through a public
+HTTP route.
+
 ## Database and migrations
 
 ```bash
@@ -72,8 +85,8 @@ alembic upgrade head
 alembic check
 ```
 
-New domain tables are introduced with their owning implementation stage. The initial
-migration verifies the migration pipeline without prematurely creating unused tables.
+Migration `20260806_0003` creates `resume_documents`, including owner, private object key,
+content hash, processing status, extracted text, and a safe error code.
 
 ## Quality checks
 

@@ -35,7 +35,13 @@ async def telegram_webhook(
         return {"ok": True}
     try:
         user_service: TelegramUserService = request.app.state.telegram_user_service
-        await dispatcher.feed_update(bot, update, user_service=user_service)
+        await dispatcher.feed_update(
+            bot,
+            update,
+            user_service=user_service,
+            resume_service=request.app.state.resume_service,
+            resume_queue=request.app.state.resume_queue,
+        )
         await update_service.complete(update.update_id)
     except Exception:
         await update_service.release(update.update_id)
