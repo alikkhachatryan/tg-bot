@@ -23,8 +23,18 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("locale", sa.String(16)),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
     )
     op.create_index(op.f("ix_users_status"), "users", ["status"])
@@ -36,8 +46,18 @@ def upgrade() -> None:
         sa.Column("username", sa.String(64)),
         sa.Column("first_name", sa.String(128)),
         sa.Column("last_name", sa.String(128)),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_telegram_accounts")),
         sa.UniqueConstraint("telegram_user_id", name=op.f("uq_telegram_accounts_telegram_user_id")),
@@ -49,7 +69,12 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("consent_type", sa.String(48), nullable=False),
         sa.Column("policy_version", sa.String(32), nullable=False),
-        sa.Column("granted_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "granted_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.Column("revoked_at", sa.DateTime(timezone=True)),
         sa.Column("source_update_id", sa.BigInteger()),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
@@ -63,7 +88,12 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("state", sa.String(100), nullable=False),
         sa.Column("data", sa.JSON(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id", name=op.f("pk_conversation_states")),
     )
@@ -71,7 +101,12 @@ def upgrade() -> None:
         "processed_telegram_updates",
         sa.Column("update_id", sa.BigInteger(), autoincrement=False, nullable=False),
         sa.Column("status", sa.String(16), nullable=False),
-        sa.Column("received_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "received_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.Column("processed_at", sa.DateTime(timezone=True)),
         sa.PrimaryKeyConstraint("update_id", name=op.f("pk_processed_telegram_updates")),
     )
