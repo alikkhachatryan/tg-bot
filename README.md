@@ -9,9 +9,10 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stage 1 establishes the deployable foundation: FastAPI, aiogram, async SQLAlchemy,
-PostgreSQL, Redis, Alembic, arq, structured logging, health endpoints, Docker Compose,
-CI, and quality tooling. Product flows are implemented incrementally in later stages.
+Stages 1 and 2 establish the deployable foundation and Telegram identity layer: FastAPI,
+aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
+endpoints, Docker Compose, CI, closed-beta access, versioned consent, durable conversation
+state, protected webhook delivery, update deduplication, and local polling.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -47,6 +48,22 @@ docker compose --profile storage up minio
 
 The production path uses Telegram webhook delivery through the FastAPI app. The polling
 service is only for local development and must not run alongside the webhook consumer.
+
+## Telegram development
+
+1. Create a bot with BotFather and put its token in `TELEGRAM_BOT_TOKEN`.
+2. Put your numeric Telegram user ID in `BETA_TELEGRAM_IDS` while `BETA_MODE=true`.
+3. Apply migrations with `alembic upgrade head`.
+4. Start local polling:
+
+```bash
+python -m app.bot.polling
+```
+
+Production sends updates to `POST /telegram/webhook` and must include the configured
+`X-Telegram-Bot-Api-Secret-Token` value. Repeated update IDs are ignored, failed handler
+claims are released for retry, and stale processing claims can be recovered. Resume
+documents are rejected until the current privacy/AI-processing consent is accepted.
 
 ## Database and migrations
 
@@ -90,4 +107,3 @@ docker compose config
 Backup, restore, privacy deletion, webhook setup, source configuration, demo seed,
 admin operation, and full production checklist documentation will be completed with the
 stages that implement those capabilities.
-

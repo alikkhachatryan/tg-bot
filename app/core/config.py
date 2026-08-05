@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_webhook_url: str | None = None
     telegram_webhook_secret: SecretStr | None = None
+    privacy_policy_version: str = "2026-08-06"
+    telegram_update_claim_timeout_seconds: int = Field(default=300, ge=30, le=3600)
 
     ai_provider: Literal["fake", "openai"] = "fake"
     ai_api_key: SecretStr | None = None
@@ -61,6 +63,10 @@ class Settings(BaseSettings):
         if not self.beta_telegram_ids.strip():
             return frozenset()
         return frozenset(int(item.strip()) for item in self.beta_telegram_ids.split(","))
+
+    @property
+    def has_telegram_token(self) -> bool:
+        return _has_secret(self.telegram_bot_token)
 
     @model_validator(mode="after")
     def validate_provider_and_production_settings(self) -> Self:
