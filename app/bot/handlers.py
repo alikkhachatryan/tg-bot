@@ -1,8 +1,12 @@
+from io import BytesIO
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message, Update
 
 from app.bot.keyboards import consent_keyboard, main_menu_keyboard
+from app.services.queue import ResumeQueue
+from app.services.resumes import ResumeService, ResumeUpload, ResumeValidationError
 from app.services.telegram_users import (
     BetaAccessDeniedError,
     TelegramIdentity,
@@ -84,7 +88,12 @@ async def accept_consent(
     await callback.answer("Готово")
 
 
-async def document_gate(message: Message, user_service: TelegramUserService) -> None:
+async def document_gate(
+    message: Message,
+    user_service: TelegramUserService,
+    resume_service: ResumeService,
+    resume_queue: ResumeQueue,
+) -> None:
     identity = identity_from_message(message)
     if identity is None:
         return
@@ -98,7 +107,36 @@ async def document_gate(message: Message, user_service: TelegramUserService) -> 
             "Сначала примите условия обработки данных.", reply_markup=consent_keyboard()
         )
         return
-    await message.answer("Загрузка резюме будет доступна на следующем этапе разработки.")
+    document = message.document
+    if document is None:
+        return
+    if document.file_size is None or document.file_size > resume_service.max_bytes:
+        await message.answer("Файл слишком большой.")
+        return
+    bot = message.bot
+    if bot is None:
+        return
+    buffer = BytesIO()
+    await bot.download(document.file_id, destination=buffer)
+    try:
+        resume_id = await resume_service.save(
+            user_id,
+            ResumeUpload(
+                telegram_file_id=document.file_id,
+                filename=document.file_name or "resume",
+                declared_media_type=document.mime_type,
+                declared_size=document.file_size,
+                data=buffer.getvalue(),
+            ),
+        )
+    except ResumeValidationError:
+        await message.answer(
+            "Файл не принят. Отправьте корректный PDF или DOCX установленного размера."
+        )
+        return
+    await resume_service.mark_queued(resume_id)
+    await resume_queue.enqueue(resume_id)
+    await message.answer("Резюме принято и поставлено в очередь на обработку.")
 
 
 async def menu(message: Message) -> None:

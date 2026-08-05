@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 from app.bot.handlers import (
     accept_consent,
@@ -13,6 +14,7 @@ from app.bot.handlers import (
     privacy_command,
     start,
 )
+from app.services.resumes import DOCX_MEDIA_TYPE, ResumeValidationError
 from app.services.telegram_users import BetaAccessDeniedError
 
 
@@ -76,13 +78,87 @@ async def test_document_requires_consent() -> None:
         register=AsyncMock(return_value="user-id"),
         has_required_consent=AsyncMock(return_value=False),
     )
-    await document_gate(message, service)
+    await document_gate(message, service, SimpleNamespace(), SimpleNamespace())
     assert "Сначала" in message.answer.await_args.args[0]
 
-    message.answer.reset_mock()
-    service.has_required_consent.return_value = True
-    await document_gate(message, service)
-    assert "следующем этапе" in message.answer.await_args.args[0]
+
+async def test_document_is_downloaded_saved_and_queued() -> None:
+    data = b"valid-document-bytes"
+
+    def download(_file_id, destination) -> None:
+        destination.write(data)
+
+    message = SimpleNamespace(
+        from_user=fake_sender(),
+        answer=AsyncMock(),
+        bot=SimpleNamespace(download=AsyncMock(side_effect=download)),
+        document=SimpleNamespace(
+            file_id="file-id",
+            file_name="resume.docx",
+            mime_type=DOCX_MEDIA_TYPE,
+            file_size=len(data),
+        ),
+    )
+    user_service = SimpleNamespace(
+        register=AsyncMock(return_value="user-id"),
+        has_required_consent=AsyncMock(return_value=True),
+    )
+    resume_id = uuid4()
+    resume_service = SimpleNamespace(
+        max_bytes=1024,
+        save=AsyncMock(return_value=resume_id),
+        mark_queued=AsyncMock(),
+    )
+    queue = SimpleNamespace(enqueue=AsyncMock())
+
+    await document_gate(message, user_service, resume_service, queue)
+
+    resume_service.save.assert_awaited_once()
+    resume_service.mark_queued.assert_awaited_once_with(resume_id)
+    queue.enqueue.assert_awaited_once_with(resume_id)
+    assert "очередь" in message.answer.await_args.args[0]
+
+
+async def test_document_rejects_large_and_invalid_uploads() -> None:
+    message = SimpleNamespace(
+        from_user=fake_sender(),
+        answer=AsyncMock(),
+        document=SimpleNamespace(file_size=2048),
+    )
+    user_service = SimpleNamespace(
+        register=AsyncMock(return_value="user-id"),
+        has_required_consent=AsyncMock(return_value=True),
+    )
+    await document_gate(
+        message,
+        user_service,
+        SimpleNamespace(max_bytes=1024),
+        SimpleNamespace(),
+    )
+    assert "большой" in message.answer.await_args.args[0]
+
+    data = b"invalid"
+    message.document = SimpleNamespace(
+        file_id="file-id",
+        file_name="resume.pdf",
+        mime_type="application/pdf",
+        file_size=len(data),
+    )
+
+    def download(_file_id, destination) -> None:
+        destination.write(data)
+
+    message.bot = SimpleNamespace(download=AsyncMock(side_effect=download))
+    resume_service = SimpleNamespace(
+        max_bytes=1024,
+        save=AsyncMock(side_effect=ResumeValidationError("invalid_pdf")),
+        mark_queued=AsyncMock(),
+    )
+    queue = SimpleNamespace(enqueue=AsyncMock())
+    await document_gate(message, user_service, resume_service, queue)
+    queue.enqueue.assert_not_awaited()
+    resume_service.mark_queued.assert_not_awaited()
+    assert "не принят" in message.answer.await_args.args[0]
 
 
 async def test_basic_commands_and_privacy_callbacks() -> None:
