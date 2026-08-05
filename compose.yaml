@@ -1,0 +1,134 @@
+x-app-environment: &app-environment
+  APP_ENV: ${APP_ENV:-development}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-in-production}
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tg_bot:tg_bot@postgres:5432/tg_bot}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  AI_PROVIDER: ${AI_PROVIDER:-fake}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_MODEL: ${AI_MODEL:-gpt-5.6-luna}
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+  LOCAL_STORAGE_PATH: /app/storage
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  BETA_MODE: ${BETA_MODE:-true}
+  BETA_TELEGRAM_IDS: ${BETA_TELEGRAM_IDS:-}
+
+x-app-service: &app-service
+  build:
+    context: .
+  environment: *app-environment
+  restart: unless-stopped
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  volumes:
+    - local_storage:/app/storage
+
+services:
+  app:
+    <<: *app-service
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    <<: *app-service
+    command: ["arq", "app.workers.settings.WorkerSettings"]
+
+  scheduler:
+    <<: *app-service
+    command: ["arq", "app.workers.scheduler.SchedulerSettings"]
+
+  bot-polling:
+    <<: *app-service
+    profiles: ["polling"]
+    command: ["python", "-m", "app.bot.polling"]
+
+  migrate:
+    build:
+      context: .
+    environment: *app-environment
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tg_bot
+      POSTGRES_USER: tg_bot
+      POSTGRES_PASSWORD: tg_bot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tg_bot -d tg_bot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nginx:
+    image: nginx:1.29-alpine
+    profiles: ["proxy"]
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    profiles: ["storage"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin-change-me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  local_storage:
+  minio_data:
+
