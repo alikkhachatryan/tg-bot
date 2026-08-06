@@ -23,6 +23,12 @@ def test_empty_beta_ids_are_supported() -> None:
     assert Settings(_env_file=None).beta_user_ids == frozenset()
 
 
+def test_matching_weights_must_add_up_to_one_hundred() -> None:
+    assert sum(Settings(_env_file=None).matching_weights.values()) == 100
+    with pytest.raises(ValidationError, match="Matching weights"):
+        Settings(_env_file=None, match_weight_salary=6)
+
+
 def test_vacancy_source_csv_settings_are_parsed() -> None:
     settings = Settings(
         _env_file=None,

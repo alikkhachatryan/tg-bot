@@ -4,6 +4,7 @@ from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
+from app.services.matching import MatchingService
 from app.services.onboarding import OnboardingService
 from app.services.profiles import ProfileService
 from app.services.queue import ArqResumeQueue
@@ -33,6 +34,7 @@ async def run_polling() -> None:
             profile_service=ProfileService(sessions),
             onboarding_service=OnboardingService(sessions),
             vacancy_service=VacancyIngestionService(sessions),
+            matching_service=MatchingService(sessions, settings),
             submission_service=VacancySubmissionService(sessions),
         )
     finally:

@@ -1,3 +1,4 @@
+from app.db.models.matching import VacancyMatch
 from app.db.models.onboarding import OnboardingSession, SearchPreference
 from app.db.models.profile import CandidateProfile, ResumeParseRun
 from app.db.models.resume import ResumeDocument
@@ -24,6 +25,7 @@ __all__ = [
     "User",
     "Vacancy",
     "VacancyIngestionRun",
+    "VacancyMatch",
     "VacancyOrigin",
     "VacancySubmission",
 ]

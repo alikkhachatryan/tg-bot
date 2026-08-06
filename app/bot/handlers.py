@@ -21,6 +21,7 @@ from app.bot.keyboards import (
     profile_review_keyboard,
     submission_review_keyboard,
 )
+from app.services.matching import MatchingService, MatchingUnavailableError, RankedVacancy
 from app.services.onboarding import OnboardingService, OnboardingStep, OnboardingValidationError
 from app.services.profiles import ProfileService
 from app.services.queue import ResumeQueue
@@ -208,6 +209,7 @@ async def main_menu_callback(
     profile_service: ProfileService,
     onboarding_service: OnboardingService,
     vacancy_service: VacancyIngestionService,
+    matching_service: MatchingService,
     submission_service: VacancySubmissionService,
 ) -> None:
     identity = TelegramIdentity(
@@ -228,7 +230,17 @@ async def main_menu_callback(
 
     action = (callback.data or "").removeprefix("menu:")
     if action == "new_jobs":
-        vacancies = await vacancy_service.latest()
+        try:
+            vacancies = await matching_service.new_matches(user_id)
+        except MatchingUnavailableError as exc:
+            text = (
+                "Сначала загрузите и подтвердите резюме."
+                if exc.code == "profile_missing"
+                else "Сначала завершите настройки поиска."
+            )
+            await callback.message.answer(text, reply_markup=main_menu_keyboard())
+            await callback.answer()
+            return
         await callback.message.answer(
             _vacancy_list(vacancies),
             reply_markup=main_menu_keyboard(),
@@ -556,21 +568,24 @@ def _confirmed_profile_summary(profile: Any) -> str:
     )
 
 
-def _vacancy_list(vacancies: list[Any]) -> str:
+def _vacancy_list(vacancies: list[RankedVacancy]) -> str:
     if not vacancies:
-        return "Новых вакансий пока нет. Источники будут проверены по расписанию."
+        return (
+            "Новых подходящих вакансий пока нет. Уже показанные вакансии повторно не отправляются; "
+            "источники будут проверены по расписанию."
+        )
     items = []
-    for vacancy in vacancies:
+    for ranked in vacancies:
+        vacancy = ranked.vacancy
         location = f" — {escape(vacancy.location)}" if vacancy.location else ""
+        reasons = "\n".join(f"• {escape(item)}" for item in ranked.match.explanations[:4])
         items.append(
+            f"<b>{ranked.match.score}%</b> · "
             f'<a href="{escape(vacancy.canonical_url, quote=True)}">'
             f"{escape(vacancy.title)}</a> — {escape(vacancy.company)}{location}"
+            + (f"\n{reasons}" if reasons else "")
         )
-    return (
-        "<b>Последние собранные вакансии</b>\n\n"
-        + "\n\n".join(items)
-        + "\n\nПерсональное ранжирование будет добавлено на следующем этапе."
-    )
+    return "<b>Новые вакансии для вас</b>\n\n" + "\n\n".join(items)
 
 
 def _private_vacancy_list(submissions: list[Any]) -> str:

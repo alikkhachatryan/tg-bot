@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     lever_sites: str = ""
     max_resume_size_mb: int = Field(default=10, ge=1, le=50)
     default_match_threshold: int = Field(default=70, ge=0, le=100)
+    match_weight_skills: int = Field(default=35, ge=0, le=100)
+    match_weight_experience: int = Field(default=20, ge=0, le=100)
+    match_weight_role: int = Field(default=15, ge=0, le=100)
+    match_weight_location: int = Field(default=15, ge=0, le=100)
+    match_weight_language: int = Field(default=10, ge=0, le=100)
+    match_weight_salary: int = Field(default=5, ge=0, le=100)
 
     log_level: str = "INFO"
     admin_username: str = "admin"
@@ -101,8 +107,21 @@ class Settings(BaseSettings):
     def has_telegram_token(self) -> bool:
         return _has_secret(self.telegram_bot_token)
 
+    @property
+    def matching_weights(self) -> dict[str, int]:
+        return {
+            "skills": self.match_weight_skills,
+            "experience": self.match_weight_experience,
+            "role": self.match_weight_role,
+            "location": self.match_weight_location,
+            "language": self.match_weight_language,
+            "salary": self.match_weight_salary,
+        }
+
     @model_validator(mode="after")
     def validate_provider_and_production_settings(self) -> Self:
+        if sum(self.matching_weights.values()) != 100:
+            raise ValueError("Matching weights must add up to 100")
         if self.ai_provider == "deepseek" and not _has_secret(self.ai_api_key):
             raise ValueError("AI_API_KEY is required when AI_PROVIDER=deepseek")
         if self.is_production and not self.ai_base_url.startswith("https://"):
