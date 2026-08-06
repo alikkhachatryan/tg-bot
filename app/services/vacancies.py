@@ -17,6 +17,19 @@ class VacancyIngestionService:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
+    async def latest(self, limit: int = 5) -> list[Vacancy]:
+        async with self._sessions() as session:
+            return list(
+                await session.scalars(
+                    select(Vacancy)
+                    .order_by(
+                        Vacancy.published_at.desc().nullslast(),
+                        Vacancy.last_seen_at.desc(),
+                    )
+                    .limit(limit)
+                )
+            )
+
     async def ingest_source(self, source: VacancySource) -> VacancyIngestionRun:
         run = VacancyIngestionRun(source=source.name, status="running")
         async with self._sessions.begin() as session:

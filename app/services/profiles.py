@@ -65,6 +65,19 @@ class ProfileService:
                 )
         return changed is not None
 
+    async def latest_confirmed(self, user_id: UUID) -> CandidateProfile | None:
+        async with self._sessions() as session:
+            profile: CandidateProfile | None = await session.scalar(
+                select(CandidateProfile)
+                .where(
+                    CandidateProfile.user_id == user_id,
+                    CandidateProfile.status == "confirmed",
+                )
+                .order_by(CandidateProfile.confirmed_at.desc())
+                .limit(1)
+            )
+            return profile
+
     async def begin_edit(self, user_id: UUID, profile_id: UUID, field: str) -> bool:
         if field not in EDITABLE_FIELDS:
             return False

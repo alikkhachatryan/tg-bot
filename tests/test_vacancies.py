@@ -71,6 +71,10 @@ async def test_reingestion_updates_existing_origin(sqlite_sessions: Any) -> None
     assert origin_count == 1
     assert len(runs) == 2
 
+    latest = await service.latest()
+    assert len(latest) == 1
+    assert latest[0].title == "Senior Python Developer"
+
 
 async def test_changed_origin_is_remapped_to_existing_duplicate(sqlite_sessions: Any) -> None:
     service = VacancyIngestionService(sqlite_sessions)

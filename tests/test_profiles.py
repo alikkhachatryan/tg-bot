@@ -57,3 +57,5 @@ async def test_profile_draft_edit_and_confirmation(sqlite_sessions) -> None:
     assert stored is not None
     assert stored.status == "confirmed"
     assert stored.confirmed_at is not None
+    assert await service.latest_confirmed(user_id) is not None
+    assert await service.latest_confirmed(uuid4()) is None

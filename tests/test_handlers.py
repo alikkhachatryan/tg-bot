@@ -12,6 +12,7 @@ from app.bot.handlers import (
     document_gate,
     help_command,
     identity_from_message,
+    main_menu_callback,
     menu,
     onboarding_callback,
     privacy_callback,
@@ -249,3 +250,62 @@ async def test_work_mode_callback_toggles_without_advancing() -> None:
     onboarding_service.submit_work_modes.assert_not_awaited()
     message.edit_reply_markup.assert_awaited_once()
     callback.answer.assert_awaited_once()
+
+
+async def test_main_menu_buttons_are_handled() -> None:
+    user_id = uuid4()
+    message = fake_message()
+    callback = SimpleNamespace(
+        from_user=fake_sender(),
+        message=message,
+        data="menu:new_jobs",
+        answer=AsyncMock(),
+    )
+    user_service = SimpleNamespace(register=AsyncMock(return_value=user_id))
+    profile_service = SimpleNamespace(
+        latest_confirmed=AsyncMock(
+            return_value=SimpleNamespace(
+                full_name="Test User",
+                current_title="Developer",
+                desired_roles=["Backend Developer"],
+                skills=[{"name": "Python"}],
+            )
+        )
+    )
+    onboarding_service = SimpleNamespace(
+        start=AsyncMock(
+            return_value=OnboardingStep(
+                Question("preferred_locations", "Где ищем?", "list"),
+                can_go_back=True,
+            )
+        )
+    )
+    vacancy_service = SimpleNamespace(
+        latest=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    title="Python Developer",
+                    company="Example",
+                    location="Yerevan",
+                    canonical_url="https://example.com/job",
+                )
+            ]
+        )
+    )
+
+    await main_menu_callback(
+        callback, user_service, profile_service, onboarding_service, vacancy_service
+    )
+    assert "Python Developer" in message.answer.await_args.args[0]
+
+    callback.data = "menu:profile"
+    await main_menu_callback(
+        callback, user_service, profile_service, onboarding_service, vacancy_service
+    )
+    assert "Мой профиль" in message.answer.await_args.args[0]
+
+    callback.data = "menu:settings"
+    await main_menu_callback(
+        callback, user_service, profile_service, onboarding_service, vacancy_service
+    )
+    onboarding_service.start.assert_awaited_with(user_id)

@@ -1,4 +1,6 @@
+from html import escape
 from io import BytesIO
+from typing import Any
 from uuid import UUID
 
 from aiogram import F, Router
@@ -21,6 +23,7 @@ from app.services.telegram_users import (
     TelegramIdentity,
     TelegramUserService,
 )
+from app.services.vacancies import VacancyIngestionService
 
 PRIVACY_TEXT = (
     "<b>Политика конфиденциальности</b>\n\n"
@@ -162,6 +165,54 @@ async def cancel_command(message: Message) -> None:
 
 async def delete_command(message: Message) -> None:
     await message.answer("Безопасное удаление данных будет добавлено в этапе 12.")
+
+
+async def main_menu_callback(
+    callback: CallbackQuery,
+    user_service: TelegramUserService,
+    profile_service: ProfileService,
+    onboarding_service: OnboardingService,
+    vacancy_service: VacancyIngestionService,
+) -> None:
+    identity = TelegramIdentity(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+        locale=callback.from_user.language_code,
+    )
+    try:
+        user_id = await user_service.register(identity)
+    except BetaAccessDeniedError:
+        await callback.answer("Доступ ограничен", show_alert=True)
+        return
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    action = (callback.data or "").removeprefix("menu:")
+    if action == "new_jobs":
+        vacancies = await vacancy_service.latest()
+        await callback.message.answer(
+            _vacancy_list(vacancies),
+            reply_markup=main_menu_keyboard(),
+            disable_web_page_preview=True,
+        )
+    elif action == "profile":
+        profile = await profile_service.latest_confirmed(user_id)
+        text = (
+            _confirmed_profile_summary(profile)
+            if profile is not None
+            else "Подтверждённый профиль пока не найден. Отправьте резюме для обработки."
+        )
+        await callback.message.answer(text, reply_markup=main_menu_keyboard())
+    elif action == "settings":
+        await callback.message.answer("Изменим настройки поиска.")
+        await _send_onboarding_step(callback.message, await onboarding_service.start(user_id))
+    else:
+        await callback.answer("Неизвестный раздел", show_alert=True)
+        return
+    await callback.answer()
 
 
 async def confirm_profile(
@@ -352,6 +403,35 @@ async def onboarding_callback(
     await callback.answer()
 
 
+def _confirmed_profile_summary(profile: Any) -> str:
+    roles = ", ".join(profile.desired_roles) or "не указаны"
+    skills = ", ".join(item.get("name", "") for item in profile.skills[:12]) or "не указаны"
+    return (
+        "<b>Мой профиль</b>\n\n"
+        f"Имя: {escape(profile.full_name or 'не указано')}\n"
+        f"Текущая должность: {escape(profile.current_title or 'не указана')}\n"
+        f"Желаемые роли: {escape(roles)}\n"
+        f"Навыки: {escape(skills)}"
+    )
+
+
+def _vacancy_list(vacancies: list[Any]) -> str:
+    if not vacancies:
+        return "Новых вакансий пока нет. Источники будут проверены по расписанию."
+    items = []
+    for vacancy in vacancies:
+        location = f" — {escape(vacancy.location)}" if vacancy.location else ""
+        items.append(
+            f'<a href="{escape(vacancy.canonical_url, quote=True)}">'
+            f"{escape(vacancy.title)}</a> — {escape(vacancy.company)}{location}"
+        )
+    return (
+        "<b>Последние собранные вакансии</b>\n\n"
+        + "\n\n".join(items)
+        + "\n\nПерсональное ранжирование будет добавлено на следующем этапе."
+    )
+
+
 async def _send_onboarding_step(
     message: Message | InaccessibleMessage, step: OnboardingStep
 ) -> None:
@@ -380,6 +460,7 @@ def create_router() -> Router:
     router.message.register(cancel_command, Command("cancel"))
     router.message.register(delete_command, Command("delete_me"))
     router.message.register(onboarding_command, Command("onboarding"))
+    router.callback_query.register(main_menu_callback, F.data.startswith("menu:"))
     router.callback_query.register(confirm_profile, F.data.startswith("profile:confirm:"))
     router.callback_query.register(edit_profile_menu, F.data.startswith("profile:edit:"))
     router.callback_query.register(begin_profile_field_edit, F.data.startswith("profile:field:"))
