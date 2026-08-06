@@ -1,5 +1,4 @@
 import hashlib
-import re
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -9,24 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.submission import VacancySubmission
 from app.db.models.telegram import ConversationState
-from app.sources.normalize import plain_text
-
-_URL_RE = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
-_VACANCY_TERMS = (
-    "vacancy",
-    "job",
-    "hiring",
-    "position",
-    "requirements",
-    "ваканси",
-    "работ",
-    "ищем",
-    "требован",
-    "должност",
-    "աշխատանք",
-    "թափուր",
-    "պահանջ",
-)
+from app.services.vacancy_text import parse_vacancy_text
 
 
 class VacancySubmissionError(Exception):
@@ -64,11 +46,12 @@ class VacancySubmissionService:
     ) -> SubmissionResult:
         if input_type not in {"manual", "forwarded"}:
             raise VacancySubmissionError("invalid_input_type")
-        normalized = plain_text(text)
-        if len(normalized) < 60 or not _looks_like_vacancy(normalized):
-            raise VacancySubmissionError("not_a_vacancy")
-        if len(normalized) > 100_000:
+        if len(text) > 100_000:
             raise VacancySubmissionError("too_large")
+        parsed = parse_vacancy_text(text)
+        if parsed is None:
+            raise VacancySubmissionError("not_a_vacancy")
+        normalized = parsed.normalized_text
         content_hash = hashlib.sha256(normalized.casefold().encode()).hexdigest()
         async with self._sessions() as session:
             existing = await session.scalar(
@@ -80,18 +63,15 @@ class VacancySubmissionService:
         if existing is not None:
             return SubmissionResult(existing, duplicate=True)
 
-        title = _extract_title(text)
         submission = VacancySubmission(
             user_id=user_id,
             input_type=input_type,
             status="awaiting_confirmation",
-            title=title,
-            company=_extract_labeled_value(text, ("company", "компания", "ընկերություն")),
-            location=_extract_labeled_value(
-                text, ("location", "локация", "город", "место", "վայր")
-            ),
-            workplace_type=_workplace_type(normalized),
-            source_url=source_url or _first_url(normalized),
+            title=parsed.title,
+            company=parsed.company,
+            location=parsed.location,
+            workplace_type=parsed.workplace_type,
+            source_url=source_url or parsed.first_url,
             normalized_text=normalized,
             content_hash=content_hash,
         )
@@ -154,48 +134,3 @@ class VacancySubmissionService:
                     .limit(limit)
                 )
             )
-
-
-def _looks_like_vacancy(text: str) -> bool:
-    normalized = text.casefold()
-    return any(term in normalized for term in _VACANCY_TERMS)
-
-
-def _extract_title(text: str) -> str:
-    lines = [plain_text(line) for line in text.splitlines() if plain_text(line)]
-    if not lines:
-        raise VacancySubmissionError("not_a_vacancy")
-    for line in lines[:5]:
-        match = re.match(
-            r"^(?:vacancy|job title|position|вакансия|должность|պաշտոն)\s*[:—-]\s*(.+)$",
-            line,
-            re.IGNORECASE,
-        )
-        if match:
-            return match.group(1)[:500]
-    return lines[0][:500]
-
-
-def _extract_labeled_value(text: str, labels: tuple[str, ...]) -> str | None:
-    pattern = "|".join(re.escape(label) for label in labels)
-    for line in text.splitlines():
-        match = re.match(rf"^(?:{pattern})\s*[:—-]\s*(.+)$", line.strip(), re.IGNORECASE)
-        if match:
-            return plain_text(match.group(1))[:500]
-    return None
-
-
-def _workplace_type(text: str) -> str:
-    normalized = text.casefold()
-    if any(term in normalized for term in ("remote", "удален", "дистанц", "հեռավար")):
-        return "remote"
-    if any(term in normalized for term in ("hybrid", "гибрид", "հիբրիդ")):
-        return "hybrid"
-    if any(term in normalized for term in ("office", "офис", "գրասենյակ")):
-        return "office"
-    return "unspecified"
-
-
-def _first_url(text: str) -> str | None:
-    match = _URL_RE.search(text)
-    return match.group(0).rstrip(".,);]")[:2000] if match else None

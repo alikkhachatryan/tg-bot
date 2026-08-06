@@ -20,6 +20,7 @@ from app.services.resumes import ResumeService
 from app.services.storage import create_storage
 from app.services.submissions import VacancySubmissionService
 from app.services.telegram_users import TelegramUpdateService, TelegramUserService
+from app.services.telegram_vacancies import TelegramVacancyService
 from app.services.vacancies import VacancyIngestionService
 
 
@@ -55,6 +56,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.onboarding_service = OnboardingService(application.state.session_factory)
         application.state.vacancy_service = VacancyIngestionService(
             application.state.session_factory
+        )
+        application.state.telegram_vacancy_service = TelegramVacancyService(
+            application.state.vacancy_service, resolved_settings
         )
         application.state.matching_service = MatchingService(
             application.state.session_factory, resolved_settings

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     telegram_webhook_secret: SecretStr | None = None
     privacy_policy_version: str = "2026-08-06-vacancy-submissions-v2"
     telegram_update_claim_timeout_seconds: int = Field(default=300, ge=30, le=3600)
+    telegram_vacancy_chat_ids: str = ""
+    telegram_vacancy_chat_usernames: str = ""
 
     ai_provider: Literal["fake", "deepseek"] = "fake"
     ai_api_key: SecretStr | None = None
@@ -108,6 +110,17 @@ class Settings(BaseSettings):
         return _has_secret(self.telegram_bot_token)
 
     @property
+    def telegram_vacancy_chat_id_set(self) -> frozenset[int]:
+        return frozenset(int(item) for item in _csv_values(self.telegram_vacancy_chat_ids))
+
+    @property
+    def telegram_vacancy_chat_username_set(self) -> frozenset[str]:
+        return frozenset(
+            item.removeprefix("@").casefold()
+            for item in _csv_values(self.telegram_vacancy_chat_usernames)
+        )
+
+    @property
     def matching_weights(self) -> dict[str, int]:
         return {
             "skills": self.match_weight_skills,
@@ -120,6 +133,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_provider_and_production_settings(self) -> Self:
+        try:
+            _ = self.telegram_vacancy_chat_id_set
+        except ValueError as exc:
+            raise ValueError("TELEGRAM_VACANCY_CHAT_IDS must contain integers") from exc
         if sum(self.matching_weights.values()) != 100:
             raise ValueError("Matching weights must add up to 100")
         if self.ai_provider == "deepseek" and not _has_secret(self.ai_api_key):

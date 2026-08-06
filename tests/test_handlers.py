@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -8,6 +9,7 @@ from app.bot.handlers import (
     apply_profile_edit,
     begin_profile_field_edit,
     cancel_command,
+    chat_id_command,
     confirm_profile,
     delete_command,
     document_gate,
@@ -20,6 +22,7 @@ from app.bot.handlers import (
     privacy_command,
     start,
     submission_callback,
+    telegram_vacancy_message,
 )
 from app.services.onboarding import OnboardingStep, Question
 from app.services.resumes import DOCX_MEDIA_TYPE, ResumeValidationError
@@ -49,6 +52,38 @@ async def test_start_registers_user_and_shows_consent() -> None:
 
     service.register.assert_awaited_once()
     message.answer.assert_awaited_once()
+
+
+async def test_chat_id_and_telegram_source_handlers() -> None:
+    chat = SimpleNamespace(
+        id=-100123,
+        type="channel",
+        title="Armenia Jobs",
+        username="armenia_jobs",
+    )
+    message = SimpleNamespace(
+        chat=chat,
+        message_id=42,
+        text="Vacancy: PHP Developer. We are hiring. Requirements: PHP and Bitrix. " * 2,
+        caption=None,
+        date=datetime.now(UTC),
+        answer=AsyncMock(),
+    )
+    service = SimpleNamespace(ingest=AsyncMock())
+
+    await chat_id_command(message)
+    await telegram_vacancy_message(message, service)
+
+    assert "-100123" in message.answer.await_args.args[0]
+    service.ingest.assert_awaited_once_with(
+        chat_id=-100123,
+        chat_type="channel",
+        chat_title="Armenia Jobs",
+        chat_username="armenia_jobs",
+        message_id=42,
+        text=message.text,
+        published_at=message.date,
+    )
 
 
 async def test_start_handles_beta_denial_and_missing_sender() -> None:

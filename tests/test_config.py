@@ -29,6 +29,19 @@ def test_matching_weights_must_add_up_to_one_hundred() -> None:
         Settings(_env_file=None, match_weight_salary=6)
 
 
+def test_telegram_vacancy_allowlist_is_normalized() -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_vacancy_chat_ids="-100123, -456",
+        telegram_vacancy_chat_usernames="@Jobs_AM, remote_jobs",
+    )
+
+    assert settings.telegram_vacancy_chat_id_set == frozenset({-100123, -456})
+    assert settings.telegram_vacancy_chat_username_set == frozenset({"jobs_am", "remote_jobs"})
+    with pytest.raises(ValidationError, match="must contain integers"):
+        Settings(_env_file=None, telegram_vacancy_chat_ids="not-an-id")
+
+
 def test_vacancy_source_csv_settings_are_parsed() -> None:
     settings = Settings(
         _env_file=None,

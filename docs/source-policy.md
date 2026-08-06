@@ -18,8 +18,10 @@ Staff.am, Job.am, LinkedIn, and similar services are not scraped. They require a
 API, a partner feed, written permission, or user-forwarded vacancy content before an
 adapter is enabled.
 
-All adapters produce the same canonical vacancy structure. Source references and content
-hashes are retained so normalization can merge duplicates while preserving provenance.
+All adapters produce the same canonical vacancy structure. Approved Telegram chats are
+handled through a strict allowlist; only new and edited posts are received, and sender
+identities are not retained. Source references and content hashes are retained so
+normalization can merge duplicates while preserving provenance.
 Matching ranks vacancies by candidate fit, geography, remote eligibility, salary,
 freshness, and explicit preferences rather than by source popularity.
 
