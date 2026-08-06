@@ -699,6 +699,7 @@ def create_router() -> Router:
     router.message.register(delete_command, Command("delete_me"))
     router.message.register(add_job_command, Command("add_job"))
     router.message.register(onboarding_command, Command("onboarding"))
+    router.channel_post.register(chat_id_command, Command("chat_id"))
     router.channel_post.register(telegram_vacancy_message)
     router.edited_channel_post.register(telegram_vacancy_message)
     router.message.register(telegram_vacancy_message, F.chat.type.in_({"group", "supergroup"}))
