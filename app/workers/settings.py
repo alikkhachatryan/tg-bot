@@ -6,6 +6,7 @@ from app.ai import create_ai_provider
 from app.bot.factory import create_bot
 from app.core.config import get_settings
 from app.db.session import create_engine, create_session_factory
+from app.services.queue import RESUME_QUEUE_NAME
 from app.services.storage import create_storage
 from app.workers.tasks import process_resume, worker_healthcheck
 
@@ -37,3 +38,4 @@ class WorkerSettings:
     job_timeout = 300
     max_tries = 3
     health_check_interval = 30
+    queue_name = RESUME_QUEUE_NAME

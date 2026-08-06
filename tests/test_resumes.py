@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.db.models.profile import CandidateProfile, ResumeParseRun
 from app.db.models.resume import ResumeDocument
 from app.db.models.telegram import TelegramAccount, User
-from app.services.queue import ArqResumeQueue
+from app.services.queue import RESUME_QUEUE_NAME, SCHEDULER_QUEUE_NAME, ArqResumeQueue
 from app.services.resume_extraction import ResumeTextMissingError, extract_resume_text
 from app.services.resumes import DOCX_MEDIA_TYPE, ResumeService, ResumeUpload, ResumeValidationError
 from app.services.storage import LocalPrivateStorage
@@ -172,5 +172,14 @@ async def test_arq_queue_is_lazy_and_reuses_pool(monkeypatch) -> None:
     await queue.close()
 
     create_pool.assert_awaited_once()
-    redis.enqueue_job.assert_any_await("process_resume", str(first), _job_id=str(first))
+    redis.enqueue_job.assert_any_await(
+        "process_resume",
+        str(first),
+        _job_id=str(first),
+        _queue_name=RESUME_QUEUE_NAME,
+    )
     redis.aclose.assert_awaited_once()
+
+
+def test_resume_and_scheduler_queues_are_isolated() -> None:
+    assert RESUME_QUEUE_NAME != SCHEDULER_QUEUE_NAME

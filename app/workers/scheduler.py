@@ -5,6 +5,7 @@ from arq.connections import RedisSettings
 
 from app.core.config import get_settings
 from app.db.session import create_engine, create_session_factory
+from app.services.queue import SCHEDULER_QUEUE_NAME
 from app.sources import create_vacancy_sources
 from app.workers.tasks import ingest_vacancies, scheduler_heartbeat
 
@@ -35,3 +36,4 @@ class SchedulerSettings:
     max_jobs = 1
     job_timeout = 600
     max_tries = 2
+    queue_name = SCHEDULER_QUEUE_NAME
