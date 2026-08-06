@@ -78,8 +78,8 @@ class OnboardingService:
 
     async def start(self, user_id: UUID) -> OnboardingStep:
         async with self._sessions.begin() as session:
-            profile_roles = await session.scalar(
-                select(CandidateProfile.desired_roles)
+            profile = await session.scalar(
+                select(CandidateProfile)
                 .where(
                     CandidateProfile.user_id == user_id,
                     CandidateProfile.status == "confirmed",
@@ -87,26 +87,44 @@ class OnboardingService:
                 .order_by(CandidateProfile.confirmed_at.desc())
                 .limit(1)
             )
-            desired_roles = profile_roles[:20] if profile_roles else []
+            desired_roles = profile.desired_roles[:20] if profile else []
+            profile_languages = _profile_languages(profile.languages if profile else [])
+            defaults: dict[str, Any] = {}
+            if desired_roles:
+                defaults["desired_roles"] = desired_roles
+            if profile_languages:
+                defaults["languages"] = profile_languages
+                defaults["_languages_from_profile"] = True
             flow = await session.get(OnboardingSession, user_id)
             if flow is None or flow.status == "completed":
                 flow = OnboardingSession(
                     user_id=user_id,
                     current_question=("preferred_locations" if desired_roles else "desired_roles"),
-                    answers={"desired_roles": desired_roles} if desired_roles else {},
+                    answers=defaults,
                     history=["desired_roles"] if desired_roles else [],
                     status="active",
                 )
                 await session.merge(flow)
-            elif (
-                flow.status == "active"
-                and flow.current_question == "desired_roles"
-                and not flow.answers.get("desired_roles")
-                and desired_roles
-            ):
-                flow.current_question = "preferred_locations"
-                flow.answers = {**flow.answers, "desired_roles": desired_roles}
-                flow.history = [*flow.history, "desired_roles"]
+            elif flow.status == "active":
+                answers = dict(flow.answers)
+                if profile_languages and not answers.get("languages"):
+                    answers["languages"] = profile_languages
+                    answers["_languages_from_profile"] = True
+                    flow.answers = answers
+                if (
+                    flow.current_question == "desired_roles"
+                    and not answers.get("desired_roles")
+                    and desired_roles
+                ):
+                    flow.current_question = "preferred_locations"
+                    flow.answers = {**answers, "desired_roles": desired_roles}
+                    flow.history = [*flow.history, "desired_roles"]
+                elif flow.current_question == "languages" and answers.get(
+                    "_languages_from_profile"
+                ):
+                    flow.status = "completed"
+                    await _save_preferences(session, user_id, flow.answers)
+                    return OnboardingStep(None, can_go_back=True, completed=True)
             return _step(flow)
 
     async def current(self, user_id: UUID) -> OnboardingStep | None:
@@ -196,6 +214,7 @@ def _active_order(answers: dict[str, Any]) -> list[str]:
         for key in BASE_ORDER
         if not (key == "relocation_locations" and answers.get("willing_to_relocate") is not True)
         and not (key == "salary_currency" and not answers.get("min_salary"))
+        and not (key == "languages" and answers.get("_languages_from_profile") is True)
     ]
 
 
@@ -245,6 +264,15 @@ def _prune_answers(answers: dict[str, Any]) -> None:
         answers.pop("relocation_locations", None)
     if not answers.get("min_salary"):
         answers.pop("salary_currency", None)
+
+
+def _profile_languages(values: list[dict[str, Any]]) -> list[str]:
+    result = []
+    for item in values:
+        name = item.get("name")
+        if isinstance(name, str) and name.strip():
+            result.append(name.strip())
+    return list(dict.fromkeys(result))[:20]
 
 
 def _step(flow: OnboardingSession) -> OnboardingStep:
