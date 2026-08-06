@@ -13,6 +13,7 @@ from app.bot.handlers import (
     help_command,
     identity_from_message,
     menu,
+    onboarding_callback,
     privacy_callback,
     privacy_command,
     start,
@@ -218,3 +219,33 @@ async def test_profile_confirmation_and_edit_flow() -> None:
     await apply_profile_edit(message, user_service, profile_service, onboarding_service)
     profile_service.apply_pending_edit.assert_awaited_once()
     assert "Изменение сохранено" in message.answer.await_args.args[0]
+
+
+async def test_work_mode_callback_toggles_without_advancing() -> None:
+    question = Question("work_modes", "Какой формат работы?", "work_modes")
+    message = SimpleNamespace(edit_reply_markup=AsyncMock(), answer=AsyncMock())
+    callback = SimpleNamespace(
+        from_user=fake_sender(),
+        message=message,
+        data="onboard:wm:remote",
+        answer=AsyncMock(),
+    )
+    user_id = uuid4()
+    user_service = SimpleNamespace(register=AsyncMock(return_value=user_id))
+    onboarding_service = SimpleNamespace(
+        toggle_work_mode=AsyncMock(
+            return_value=OnboardingStep(
+                question,
+                can_go_back=True,
+                selected_values=("remote",),
+            )
+        ),
+        submit_work_modes=AsyncMock(),
+    )
+
+    await onboarding_callback(callback, user_service, onboarding_service)
+
+    onboarding_service.toggle_work_mode.assert_awaited_once_with(user_id, "remote")
+    onboarding_service.submit_work_modes.assert_not_awaited()
+    message.edit_reply_markup.assert_awaited_once()
+    callback.answer.assert_awaited_once()

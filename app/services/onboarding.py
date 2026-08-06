@@ -65,6 +65,7 @@ class OnboardingStep:
     question: Question | None
     can_go_back: bool
     completed: bool = False
+    selected_values: tuple[str, ...] = ()
 
 
 class OnboardingValidationError(Exception):
@@ -147,6 +148,33 @@ class OnboardingService:
                 return None
         return await self.answer(user_id, "")
 
+    async def toggle_work_mode(self, user_id: UUID, mode: str) -> OnboardingStep | None:
+        if mode not in {"remote", "hybrid", "office"}:
+            raise OnboardingValidationError("Некорректный формат работы.")
+        async with self._sessions.begin() as session:
+            flow = await session.get(OnboardingSession, user_id)
+            if flow is None or flow.status != "active" or flow.current_question != "work_modes":
+                return None
+            answers = dict(flow.answers)
+            selected = list(answers.get("work_modes", []))
+            if mode in selected:
+                selected.remove(mode)
+            else:
+                selected.append(mode)
+            answers["work_modes"] = selected
+            flow.answers = answers
+            return _step(flow)
+
+    async def submit_work_modes(self, user_id: UUID) -> OnboardingStep | None:
+        async with self._sessions() as session:
+            flow = await session.get(OnboardingSession, user_id)
+            if flow is None or flow.status != "active" or flow.current_question != "work_modes":
+                return None
+            selected = flow.answers.get("work_modes", [])
+        if not selected:
+            raise OnboardingValidationError("Выберите хотя бы один формат работы.")
+        return await self.answer(user_id, ",".join(selected), expected_key="work_modes")
+
     async def back(self, user_id: UUID) -> OnboardingStep | None:
         async with self._sessions.begin() as session:
             flow = await session.get(OnboardingSession, user_id)
@@ -199,9 +227,12 @@ def _parse_answer(question: Question, raw: str) -> Any:
             raise OnboardingValidationError("Выберите «Да» или «Нет».")
         return value == "yes"
     if question.kind == "work_modes":
-        if value not in {"remote", "hybrid", "office", "any"}:
+        if value == "any":
+            return ["remote", "hybrid", "office"]
+        modes = [item.strip() for item in value.split(",") if item.strip()]
+        if not modes or any(mode not in {"remote", "hybrid", "office"} for mode in modes):
             raise OnboardingValidationError("Выберите формат кнопкой.")
-        return ["remote", "hybrid", "office"] if value == "any" else [value]
+        return list(dict.fromkeys(modes))
     if question.kind == "currency":
         if value not in {"AMD", "USD", "EUR", "RUB"}:
             raise OnboardingValidationError("Выберите валюту кнопкой.")
@@ -217,7 +248,12 @@ def _prune_answers(answers: dict[str, Any]) -> None:
 
 
 def _step(flow: OnboardingSession) -> OnboardingStep:
-    return OnboardingStep(QUESTIONS[flow.current_question], can_go_back=bool(flow.history))
+    selected = flow.answers.get(flow.current_question, [])
+    return OnboardingStep(
+        QUESTIONS[flow.current_question],
+        can_go_back=bool(flow.history),
+        selected_values=tuple(selected) if isinstance(selected, list) else (),
+    )
 
 
 async def _save_preferences(session: AsyncSession, user_id: UUID, answers: dict[str, Any]) -> None:

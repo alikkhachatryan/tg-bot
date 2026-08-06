@@ -315,7 +315,26 @@ async def onboarding_callback(
         return
     data = callback.data or ""
     try:
-        if data == "onboard:back":
+        if data.startswith("onboard:wm:"):
+            action = data.removeprefix("onboard:wm:")
+            if action == "done":
+                step = await onboarding_service.submit_work_modes(user_id)
+            else:
+                step = await onboarding_service.toggle_work_mode(user_id, action)
+                if (
+                    callback.message is not None
+                    and not isinstance(callback.message, InaccessibleMessage)
+                    and step is not None
+                    and step.question is not None
+                ):
+                    await callback.message.edit_reply_markup(
+                        reply_markup=onboarding_keyboard(
+                            step.question, step.can_go_back, step.selected_values
+                        )
+                    )
+                await callback.answer()
+                return
+        elif data == "onboard:back":
             step = await onboarding_service.back(user_id)
         elif data == "onboard:skip":
             step = await onboarding_service.skip(user_id)
@@ -345,7 +364,7 @@ async def _send_onboarding_step(
     if step.question is not None:
         await message.answer(
             step.question.prompt,
-            reply_markup=onboarding_keyboard(step.question, step.can_go_back),
+            reply_markup=onboarding_keyboard(step.question, step.can_go_back, step.selected_values),
         )
 
 

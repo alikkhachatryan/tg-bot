@@ -61,7 +61,9 @@ def profile_edit_keyboard(profile_id: str) -> InlineKeyboardMarkup:
     )
 
 
-def onboarding_keyboard(question: Question, can_go_back: bool) -> InlineKeyboardMarkup:
+def onboarding_keyboard(
+    question: Question, can_go_back: bool, selected_values: tuple[str, ...] = ()
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if question.kind == "boolean":
         rows.append(
@@ -71,26 +73,12 @@ def onboarding_keyboard(question: Question, can_go_back: bool) -> InlineKeyboard
             ]
         )
     elif question.kind == "work_modes":
-        rows.extend(
-            [
-                [
-                    InlineKeyboardButton(
-                        text="Remote", callback_data=f"onboard:a:{question.key}:remote"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Hybrid", callback_data=f"onboard:a:{question.key}:hybrid"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Office", callback_data=f"onboard:a:{question.key}:office"
-                    )
-                ],
-                [InlineKeyboardButton(text="Любой", callback_data=f"onboard:a:{question.key}:any")],
-            ]
-        )
+        for value, label in (("remote", "Remote"), ("hybrid", "Hybrid"), ("office", "Office")):
+            marker = "✅ " if value in selected_values else ""
+            rows.append(
+                [InlineKeyboardButton(text=f"{marker}{label}", callback_data=f"onboard:wm:{value}")]
+            )
+        rows.append([InlineKeyboardButton(text="Продолжить", callback_data="onboard:wm:done")])
     elif question.kind == "currency":
         rows.append(
             [

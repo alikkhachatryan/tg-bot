@@ -129,3 +129,37 @@ async def test_onboarding_relocation_salary_and_stale_button(sqlite_sessions) ->
     await service.answer(user_id, "USD", expected_key="salary_currency")
     completed = await service.skip(user_id)
     assert completed is not None and completed.completed
+
+
+async def test_onboarding_work_modes_support_multiple_selection(sqlite_sessions) -> None:
+    user_id = uuid4()
+    async with sqlite_sessions.begin() as session:
+        session.add(User(id=user_id, status="active"))
+    service = OnboardingService(sqlite_sessions)
+    await service.start(user_id)
+    await service.answer(user_id, "Backend Developer")
+    await service.answer(user_id, "Армения")
+
+    step = await service.toggle_work_mode(user_id, "remote")
+    assert step is not None and step.selected_values == ("remote",)
+    step = await service.toggle_work_mode(user_id, "hybrid")
+    assert step is not None and step.selected_values == ("remote", "hybrid")
+    step = await service.toggle_work_mode(user_id, "remote")
+    assert step is not None and step.selected_values == ("hybrid",)
+
+    advanced = await service.submit_work_modes(user_id)
+    assert advanced is not None and advanced.question is not None
+    assert advanced.question.key == "allow_international_remote"
+
+
+async def test_onboarding_requires_a_work_mode_selection(sqlite_sessions) -> None:
+    user_id = uuid4()
+    async with sqlite_sessions.begin() as session:
+        session.add(User(id=user_id, status="active"))
+    service = OnboardingService(sqlite_sessions)
+    await service.start(user_id)
+    await service.answer(user_id, "Backend Developer")
+    await service.answer(user_id, "Армения")
+
+    with pytest.raises(OnboardingValidationError, match="хотя бы один"):
+        await service.submit_work_modes(user_id)
