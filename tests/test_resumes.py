@@ -7,7 +7,9 @@ import pytest
 from docx import Document
 from sqlalchemy import select
 
+from app.ai.fake import FakeAIProvider
 from app.core.config import Settings
+from app.db.models.profile import CandidateProfile, ResumeParseRun
 from app.db.models.resume import ResumeDocument
 from app.db.models.telegram import TelegramAccount, User
 from app.services.queue import ArqResumeQueue
@@ -98,7 +100,13 @@ async def test_save_and_process_resume(sqlite_sessions) -> None:
     await service.mark_queued(resume_id)
     bot = SimpleNamespace(send_message=AsyncMock())
     result = await process_resume(
-        {"sessions": sqlite_sessions, "storage": storage, "bot": bot}, str(resume_id)
+        {
+            "sessions": sqlite_sessions,
+            "storage": storage,
+            "bot": bot,
+            "ai_provider": FakeAIProvider(),
+        },
+        str(resume_id),
     )
 
     assert result == "processed"
@@ -109,6 +117,17 @@ async def test_save_and_process_resume(sqlite_sessions) -> None:
     assert document is not None
     assert document.status == "processed"
     assert "FastAPI" in (document.extracted_text or "")
+    async with sqlite_sessions() as session:
+        profile = await session.scalar(
+            select(CandidateProfile).where(CandidateProfile.resume_id == resume_id)
+        )
+        parse_run = await session.scalar(
+            select(ResumeParseRun).where(ResumeParseRun.resume_id == resume_id)
+        )
+    assert profile is not None
+    assert profile.status == "draft"
+    assert parse_run is not None
+    assert parse_run.status == "completed"
     bot.send_message.assert_awaited_once()
     assert (
         await process_resume(

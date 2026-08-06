@@ -9,12 +9,13 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stages 1 through 3 establish the deployable foundation, Telegram identity layer, and
-secure resume ingestion: FastAPI,
+Stages 1 through 4 establish the deployable foundation, Telegram identity layer, secure
+resume ingestion, and a reviewable AI-created candidate profile: FastAPI,
 aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
 endpoints, Docker Compose, CI, closed-beta access, versioned consent, durable conversation
 state, protected webhook delivery, update deduplication, local polling, private PDF/DOCX
-storage, and background text extraction.
+storage, background text extraction, DeepSeek/fake AI providers, strict Pydantic output,
+and Telegram confirmation/editing.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -23,7 +24,7 @@ layout, and implementation roadmap.
 
 - Python 3.12+
 - Docker Engine with Docker Compose v2
-- An OpenAI API account for real AI calls; ChatGPT Plus does not include API usage
+- A DeepSeek API account for real AI calls; the fake provider needs no external account
 - A Telegram bot token for Telegram integration
 
 ## Local Python setup
@@ -37,7 +38,9 @@ uvicorn app.main:app --reload
 ```
 
 The default `AI_PROVIDER=fake` makes local development and ordinary tests free of real
-AI requests. Do not put real keys in `.env.example` or source control.
+AI requests. For real parsing set `AI_PROVIDER=deepseek`, put the separately issued key
+in `AI_API_KEY`, and keep `AI_MODEL=deepseek-v4-flash`. Do not put real keys in
+`.env.example`, chat messages, logs, or source control.
 
 ## Docker development
 
@@ -106,8 +109,12 @@ docker compose config
 - Use S3-compatible private storage in production and local storage only in development.
 - Terminate HTTPS at the reverse proxy and validate `TELEGRAM_WEBHOOK_SECRET`.
 - Set `BETA_MODE=true` and allow Telegram IDs through `BETA_TELEGRAM_IDS` for the beta.
-- Use `AI_PROVIDER=openai`, a separately billed API key, and a project spending limit
-  only when real resume parsing is enabled.
+- Use `AI_PROVIDER=deepseek`, a separately issued API key, and an account spending limit
+  only when real resume parsing is enabled. The integration uses DeepSeek JSON Output
+  and still validates the response locally; see the
+  [official JSON guide](https://api-docs.deepseek.com/guides/json_mode).
+- Changing the external AI processor changes `PRIVACY_POLICY_VERSION`, so existing users
+  must explicitly grant the current consent before uploading another resume.
 - Replace every example secret before production; production configuration validation
   intentionally rejects unsafe defaults.
 

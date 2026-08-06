@@ -10,9 +10,10 @@ domain boundaries clear without the deployment and consistency cost of microserv
   has a small operational footprint, and is sufficient for the MVP's I/O-heavy tasks.
   Idempotency is enforced in domain services and persisted status records, not assumed
   from the queue.
-- **AI:** provider protocol with a deterministic fake implementation for tests and
-  OpenAI Responses API for production. The initial production model is
-  `gpt-5.6-luna`; every response is validated through Pydantic structured output.
+- **AI:** provider protocol with a deterministic fake implementation for tests and the
+  OpenAI-compatible DeepSeek Chat Completions API for production. The initial production
+  model is `deepseek-v4-flash`; JSON Output is still validated through strict Pydantic
+  models before persistence.
 - **Storage:** private local files in development and private S3-compatible objects in
   production. Storage keys are generated internally and never derived from filenames.
 - **Administration:** SQLAdmin in a later stage, protected by separate credentials and
@@ -29,7 +30,7 @@ Telegram -> HTTPS reverse proxy -> FastAPI/aiogram webhook -> PostgreSQL
                                       |              -> Redis
                                       -> enqueue arq jobs -> worker
                                                              |
-                                             external sources / OpenAI / storage
+                                             external sources / DeepSeek / storage
 
 scheduler -> Redis distributed lock -> periodic arq jobs
 ```
@@ -79,7 +80,7 @@ app/
   core/                 settings, logging, security, observability
   db/                   async engine, sessions, models, repositories
   domain/               candidate, resume, vacancy, matching value objects
-  integrations/         OpenAI, storage, Telegram, and job-source adapters
+  ai/                   provider protocol, strict profile schemas, fake, and DeepSeek
   services/             application use cases and transaction boundaries
   workers/              arq worker, scheduler, and task entrypoints
   schemas/              shared Pydantic transport/structured-output models
@@ -101,7 +102,7 @@ boundaries. External clients have timeouts and are closed during application shu
    consent, update idempotency, menu, and durable conversation state.
 3. **Resumes:** secure upload validation, private storage, background extraction, status
    transitions, deletion, and safe errors.
-4. **AI profile:** provider interface, fake/OpenAI implementations, structured parsing,
+4. **AI profile:** provider interface, fake/DeepSeek implementations, structured parsing,
    evidence/confidence, confirmation, and simple edits.
 5. **Onboarding:** branching question engine, one message at a time, back/skip/pause, and
    restart-safe progress.
