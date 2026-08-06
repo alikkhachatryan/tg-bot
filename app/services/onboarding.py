@@ -2,9 +2,11 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.onboarding import OnboardingSession, SearchPreference
+from app.db.models.profile import CandidateProfile
 
 QuestionKind = Literal["list", "boolean", "integer", "work_modes", "currency"]
 
@@ -75,16 +77,35 @@ class OnboardingService:
 
     async def start(self, user_id: UUID) -> OnboardingStep:
         async with self._sessions.begin() as session:
+            profile_roles = await session.scalar(
+                select(CandidateProfile.desired_roles)
+                .where(
+                    CandidateProfile.user_id == user_id,
+                    CandidateProfile.status == "confirmed",
+                )
+                .order_by(CandidateProfile.confirmed_at.desc())
+                .limit(1)
+            )
+            desired_roles = profile_roles[:20] if profile_roles else []
             flow = await session.get(OnboardingSession, user_id)
             if flow is None or flow.status == "completed":
                 flow = OnboardingSession(
                     user_id=user_id,
-                    current_question="desired_roles",
-                    answers={},
-                    history=[],
+                    current_question=("preferred_locations" if desired_roles else "desired_roles"),
+                    answers={"desired_roles": desired_roles} if desired_roles else {},
+                    history=["desired_roles"] if desired_roles else [],
                     status="active",
                 )
                 await session.merge(flow)
+            elif (
+                flow.status == "active"
+                and flow.current_question == "desired_roles"
+                and not flow.answers.get("desired_roles")
+                and desired_roles
+            ):
+                flow.current_question = "preferred_locations"
+                flow.answers = {**flow.answers, "desired_roles": desired_roles}
+                flow.history = [*flow.history, "desired_roles"]
             return _step(flow)
 
     async def current(self, user_id: UUID) -> OnboardingStep | None:
