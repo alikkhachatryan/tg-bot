@@ -17,6 +17,7 @@ from app.bot.handlers import (
     privacy_command,
     start,
 )
+from app.services.onboarding import OnboardingStep, Question
 from app.services.resumes import DOCX_MEDIA_TYPE, ResumeValidationError
 from app.services.telegram_users import BetaAccessDeniedError
 
@@ -192,8 +193,17 @@ async def test_profile_confirmation_and_edit_flow() -> None:
         begin_edit=AsyncMock(return_value=True),
         apply_pending_edit=AsyncMock(return_value=SimpleNamespace(id=profile_id)),
     )
+    onboarding_service = SimpleNamespace(
+        start=AsyncMock(
+            return_value=OnboardingStep(
+                Question("desired_roles", "Какие роли?", "list"),
+                can_go_back=False,
+            )
+        ),
+        answer=AsyncMock(return_value=None),
+    )
 
-    await confirm_profile(callback, user_service, profile_service)
+    await confirm_profile(callback, user_service, profile_service, onboarding_service)
     profile_service.confirm.assert_awaited_once()
     callback.answer.assert_awaited_with("Готово")
 
@@ -205,6 +215,6 @@ async def test_profile_confirmation_and_edit_flow() -> None:
 
     message = fake_message()
     message.text = "Senior Backend Developer"
-    await apply_profile_edit(message, user_service, profile_service)
+    await apply_profile_edit(message, user_service, profile_service, onboarding_service)
     profile_service.apply_pending_edit.assert_awaited_once()
     assert "Изменение сохранено" in message.answer.await_args.args[0]

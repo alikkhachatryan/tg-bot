@@ -9,13 +9,14 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stages 1 through 4 establish the deployable foundation, Telegram identity layer, secure
-resume ingestion, and a reviewable AI-created candidate profile: FastAPI,
+Stages 1 through 5 establish the deployable foundation, Telegram identity layer, secure
+resume ingestion, a reviewable AI-created candidate profile, and restart-safe search
+onboarding: FastAPI,
 aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
 endpoints, Docker Compose, CI, closed-beta access, versioned consent, durable conversation
 state, protected webhook delivery, update deduplication, local polling, private PDF/DOCX
 storage, background text extraction, DeepSeek/fake AI providers, strict Pydantic output,
-and Telegram confirmation/editing.
+Telegram confirmation/editing, and one-question-at-a-time search preferences.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -69,6 +70,12 @@ Production sends updates to `POST /telegram/webhook` and must include the config
 `X-Telegram-Bot-Api-Secret-Token` value. Repeated update IDs are ignored, failed handler
 claims are released for retry, and stale processing claims can be recovered. Resume
 documents are rejected until the current privacy/AI-processing consent is accepted.
+
+After profile confirmation, onboarding asks one question at a time and persists every
+answer. `/onboarding` resumes or restarts the flow. Back and skip controls are durable
+across process restarts. The initial market strategy prioritizes Armenia and jobs in
+Yerevan, then international remote roles available from Armenia, followed by suitable
+regional roles. Relocation is never assumed.
 
 Accepted resumes must have matching PDF or DOCX extension, MIME type, size, and file
 signature. The server generates the private storage key; the original name is retained
