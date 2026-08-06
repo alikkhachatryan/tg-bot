@@ -107,11 +107,21 @@ links and attributions remain available.
   from HH's live area directory using `HH_FOCUS_LOCATIONS`.
 - Put comma-separated public Greenhouse board tokens in `GREENHOUSE_BOARDS`.
 - Put comma-separated public Lever site names in `LEVER_SITES`.
+- Put approved Telegram chat IDs in `TELEGRAM_VACANCY_CHAT_IDS`; stable numeric IDs are
+  preferred. Public usernames may also be listed in `TELEGRAM_VACANCY_CHAT_USERNAMES`.
+
+For a channel, add the bot as an administrator. For a group or supergroup, add the bot
+and grant it access to messages; making it an administrator is the simplest option. Run
+`/chat_id` in that chat to obtain its signed numeric ID, then restart the bot after editing
+`.env`. Only new and edited posts are received; the Bot API does not provide arbitrary
+channel history. Automatic ingestion uses stricter vacancy-language checks than `/add_job`,
+keeps the source-message link, and does not retain the sender's Telegram identity.
 
 Greenhouse and Lever are useful for selected Armenian and international companies, but
 they are not global search APIs: the exact company boards must be chosen explicitly.
-Staff.am, Job.am, LinkedIn, protected Telegram channels, browser sessions, CAPTCHA, and
-Cloudflare are not scraped or bypassed. See [vacancy-sources.md](docs/vacancy-sources.md).
+Staff.am, Job.am, LinkedIn, unapproved Telegram chats, browser sessions, CAPTCHA, and
+Cloudflare are not scraped or bypassed. Personal Telegram accounts and userbots are not
+used. See [vacancy-sources.md](docs/vacancy-sources.md).
 
 ## Explainable matching
 

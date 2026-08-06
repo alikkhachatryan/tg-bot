@@ -12,6 +12,7 @@ from app.services.resumes import ResumeService
 from app.services.storage import create_storage
 from app.services.submissions import VacancySubmissionService
 from app.services.telegram_users import TelegramUserService
+from app.services.telegram_vacancies import TelegramVacancyService
 from app.services.vacancies import VacancyIngestionService
 
 
@@ -25,6 +26,7 @@ async def run_polling() -> None:
     user_service = TelegramUserService(sessions, settings)
     resume_service = ResumeService(sessions, create_storage(settings), settings)
     resume_queue = ArqResumeQueue(settings.redis_url)
+    vacancy_service = VacancyIngestionService(sessions)
     try:
         await dispatcher.start_polling(
             bot,
@@ -33,8 +35,9 @@ async def run_polling() -> None:
             resume_queue=resume_queue,
             profile_service=ProfileService(sessions),
             onboarding_service=OnboardingService(sessions),
-            vacancy_service=VacancyIngestionService(sessions),
+            vacancy_service=vacancy_service,
             matching_service=MatchingService(sessions, settings),
+            telegram_vacancy_service=TelegramVacancyService(vacancy_service, settings),
             submission_service=VacancySubmissionService(sessions),
         )
     finally:

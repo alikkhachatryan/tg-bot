@@ -45,6 +45,7 @@ async def telegram_webhook(
             onboarding_service=request.app.state.onboarding_service,
             vacancy_service=request.app.state.vacancy_service,
             matching_service=request.app.state.matching_service,
+            telegram_vacancy_service=request.app.state.telegram_vacancy_service,
             submission_service=request.app.state.submission_service,
         )
         await update_service.complete(update.update_id)

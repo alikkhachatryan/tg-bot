@@ -36,6 +36,7 @@ from app.services.telegram_users import (
     TelegramIdentity,
     TelegramUserService,
 )
+from app.services.telegram_vacancies import TelegramVacancyService
 from app.services.vacancies import VacancyIngestionService
 
 PRIVACY_TEXT = (
@@ -171,7 +172,12 @@ async def menu(message: Message) -> None:
 
 
 async def help_command(message: Message) -> None:
-    await message.answer("Команды: /start, /menu, /privacy, /help, /cancel, /delete_me")
+    await message.answer("Команды: /start, /menu, /privacy, /help, /cancel, /delete_me, /chat_id")
+
+
+async def chat_id_command(message: Message) -> None:
+    username = f"@{message.chat.username}" if message.chat.username else "нет публичного username"
+    await message.answer(f"Chat ID: <code>{message.chat.id}</code>\nUsername: {escape(username)}")
 
 
 async def cancel_command(message: Message) -> None:
@@ -449,6 +455,21 @@ async def forwarded_vacancy(
     await _send_submission_review(message, result)
 
 
+async def telegram_vacancy_message(
+    message: Message,
+    telegram_vacancy_service: TelegramVacancyService,
+) -> None:
+    await telegram_vacancy_service.ingest(
+        chat_id=message.chat.id,
+        chat_type=message.chat.type,
+        chat_title=message.chat.title,
+        chat_username=message.chat.username,
+        message_id=message.message_id,
+        text=message.text or message.caption,
+        published_at=message.date,
+    )
+
+
 async def submission_callback(
     callback: CallbackQuery,
     user_service: TelegramUserService,
@@ -669,14 +690,21 @@ def create_router() -> Router:
     router.message.register(privacy_command, Command("privacy"))
     router.callback_query.register(privacy_callback, F.data == "privacy")
     router.callback_query.register(accept_consent, F.data == "consent:accept")
-    router.message.register(forwarded_vacancy, F.forward_origin)
-    router.message.register(document_gate, F.document)
+    router.message.register(forwarded_vacancy, F.chat.type == "private", F.forward_origin)
+    router.message.register(document_gate, F.chat.type == "private", F.document)
     router.message.register(menu, Command("menu"))
     router.message.register(help_command, Command("help"))
+    router.message.register(chat_id_command, Command("chat_id"))
     router.message.register(cancel_command, Command("cancel"))
     router.message.register(delete_command, Command("delete_me"))
     router.message.register(add_job_command, Command("add_job"))
     router.message.register(onboarding_command, Command("onboarding"))
+    router.channel_post.register(telegram_vacancy_message)
+    router.edited_channel_post.register(telegram_vacancy_message)
+    router.message.register(telegram_vacancy_message, F.chat.type.in_({"group", "supergroup"}))
+    router.edited_message.register(
+        telegram_vacancy_message, F.chat.type.in_({"group", "supergroup"})
+    )
     router.callback_query.register(main_menu_callback, F.data.startswith("menu:"))
     router.callback_query.register(confirm_profile, F.data.startswith("profile:confirm:"))
     router.callback_query.register(edit_profile_menu, F.data.startswith("profile:edit:"))
