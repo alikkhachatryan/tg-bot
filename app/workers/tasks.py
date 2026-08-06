@@ -18,6 +18,8 @@ from app.db.models.telegram import TelegramAccount
 from app.services.profiles import ProfileService
 from app.services.resume_extraction import ResumeTextMissingError, extract_resume_text
 from app.services.storage import PrivateStorage
+from app.services.vacancies import VacancyIngestionService
+from app.sources.base import VacancySource
 
 logger = structlog.get_logger()
 
@@ -28,6 +30,17 @@ async def worker_healthcheck(ctx: dict[str, Any]) -> str:
 
 async def scheduler_heartbeat(ctx: dict[str, Any]) -> str:
     return "ok"
+
+
+async def ingest_vacancies(ctx: dict[str, Any]) -> dict[str, str]:
+    sessions: async_sessionmaker[AsyncSession] = ctx["sessions"]
+    sources: list[VacancySource] = ctx.get("vacancy_sources", [])
+    service = VacancyIngestionService(sessions)
+    results: dict[str, str] = {}
+    for source in sources:
+        run = await service.ingest_source(source)
+        results[source.name] = run.status
+    return results
 
 
 async def process_resume(ctx: dict[str, Any], resume_id: str) -> str:

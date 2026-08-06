@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     s3_secret_key: SecretStr | None = None
 
     remotive_api_url: str = "https://remotive.com/api/remote-jobs"
+    vacancy_sources: str = "remotive,greenhouse,lever"
+    source_http_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    source_max_retries: int = Field(default=2, ge=0, le=5)
+    hh_api_url: str = "https://api.hh.ru"
+    hh_user_agent: str = ""
+    hh_access_token: SecretStr | None = None
+    hh_focus_locations: str = "Armenia,Yerevan"
+    hh_search_terms: str = ""
+    hh_per_page: int = Field(default=50, ge=1, le=100)
     greenhouse_boards: str = ""
     lever_sites: str = ""
     max_resume_size_mb: int = Field(default=10, ge=1, le=50)
@@ -67,6 +76,26 @@ class Settings(BaseSettings):
         if not self.beta_telegram_ids.strip():
             return frozenset()
         return frozenset(int(item.strip()) for item in self.beta_telegram_ids.split(","))
+
+    @property
+    def enabled_vacancy_sources(self) -> tuple[str, ...]:
+        return _csv_values(self.vacancy_sources)
+
+    @property
+    def greenhouse_board_tokens(self) -> tuple[str, ...]:
+        return _csv_values(self.greenhouse_boards)
+
+    @property
+    def lever_site_names(self) -> tuple[str, ...]:
+        return _csv_values(self.lever_sites)
+
+    @property
+    def hh_location_names(self) -> tuple[str, ...]:
+        return _csv_values(self.hh_focus_locations)
+
+    @property
+    def hh_terms(self) -> tuple[str, ...]:
+        return _csv_values(self.hh_search_terms)
 
     @property
     def has_telegram_token(self) -> bool:
@@ -110,6 +139,10 @@ class Settings(BaseSettings):
 
 def _has_secret(value: SecretStr | None, *, minimum_length: int = 1) -> bool:
     return value is not None and len(value.get_secret_value()) >= minimum_length
+
+
+def _csv_values(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 @lru_cache

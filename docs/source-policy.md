@@ -22,3 +22,7 @@ All adapters produce the same canonical vacancy structure. Source references and
 hashes are retained so normalization can merge duplicates while preserving provenance.
 Matching ranks vacancies by candidate fit, geography, remote eligibility, salary,
 freshness, and explicit preferences rather than by source popularity.
+
+The initial implementation runs at 00:10, 06:10, 12:10, and 18:10 UTC. A failed source
+does not stop other adapters. Every run stores only a safe error code and item counts;
+access tokens and raw authorization headers are never persisted.

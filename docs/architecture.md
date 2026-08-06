@@ -54,9 +54,9 @@ The schema is introduced stage by stage rather than created mechanically up fron
 | `candidate_skills` | Skills used by deterministic matching | normalized skill, level, experience, evidence |
 | `search_preferences` | Hard filters and notification inputs | roles/countries/timezones arrays; exclusions in JSONB |
 | `onboarding_sessions` | Durable one-question-at-a-time progress | current_question, answers JSONB, status |
-| `job_sources` | Adapter configuration and permissions | kind, status, config JSONB, retention rules |
-| `vacancies` | Canonical logical vacancy | match-critical columns; requirements/benefits JSONB |
-| `vacancy_source_references` | External identities and provenance | source/external ID, URL, content hash |
+| `vacancies` | Canonical logical vacancy | title/company/location, work mode, salary, dates, fingerprint |
+| `vacancy_origins` | External identities and provenance | unique source/external ID, URL, content hash, attribution |
+| `vacancy_ingestion_runs` | Source reliability audit | source, status, counts, safe error code, timestamps |
 | `vacancy_matches` | Candidate-vacancy result | hard-filter result, score, components/explanation JSONB |
 | `user_vacancy_actions` | Saved/application/feedback actions | action, reason, timestamps |
 | `notification_preferences` | Quiet hours, digest, limits | mode, timezone, threshold, daily cap |
@@ -81,6 +81,7 @@ app/
   db/                   async engine, sessions, models, repositories
   domain/               candidate, resume, vacancy, matching value objects
   ai/                   provider protocol, strict profile schemas, fake, and DeepSeek
+  sources/              approved HTTP adapters and canonical external vacancy schema
   services/             application use cases and transaction boundaries
   workers/              arq worker, scheduler, and task entrypoints
   schemas/              shared Pydantic transport/structured-output models
@@ -107,10 +108,10 @@ boundaries. External clients have timeouts and are closed during application shu
 5. **Onboarding:** branching question engine, one message at a time, back/skip/pause, and
    restart-safe progress. Initial search geography prioritizes Armenia/Yerevan and
    international remote work available from Armenia; relocation requires an explicit yes.
-6. **Vacancies:** manual/forwarded intake and Remotive, Greenhouse, Lever, approved
-   channel, and mock source adapters.
-7. **Normalization and deduplication:** sanitization, extraction, hashes, canonical jobs,
-   provenance, retention, and duplicate merging.
+6. **Vacancy adapters:** HH official API, Remotive, Greenhouse, and Lever with isolated
+   failures, bounded HTTP behavior, canonical storage, provenance, and ingestion audits.
+7. **Additional intake and normalization:** approved Armenian feeds, user-forwarded
+   vacancies, enhanced sanitization, retention, and duplicate-review tooling.
 8. **Matching:** hard filters, configurable weighted score, explanations, threshold, and
    rematching. Embeddings remain optional.
 9. **Notifications:** immediate/digest delivery, quiet hours, caps, buttons, retries, and
