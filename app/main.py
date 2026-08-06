@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
 from app.services.health import HealthService
+from app.services.matching import MatchingService
 from app.services.onboarding import OnboardingService
 from app.services.profiles import ProfileService
 from app.services.queue import ArqResumeQueue
@@ -54,6 +55,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.onboarding_service = OnboardingService(application.state.session_factory)
         application.state.vacancy_service = VacancyIngestionService(
             application.state.session_factory
+        )
+        application.state.matching_service = MatchingService(
+            application.state.session_factory, resolved_settings
         )
         application.state.submission_service = VacancySubmissionService(
             application.state.session_factory

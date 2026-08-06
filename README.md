@@ -9,7 +9,7 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stages 1 through 7 establish the deployable foundation, Telegram identity layer, secure
+Stages 1 through 8 establish the deployable foundation, Telegram identity layer, secure
 resume ingestion, a reviewable AI-created candidate profile, and restart-safe search
 onboarding: FastAPI,
 aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
@@ -22,6 +22,9 @@ Users can also submit vacancy text with `/add_job` or forward a Telegram post. T
 normalizes a private draft, detects per-user duplicates, and requires explicit confirmation
 before saving it to personal history. User submissions are never promoted to the shared
 vacancy catalog automatically.
+The “New vacancies” menu action runs deterministic matching against the confirmed profile
+and active search preferences. It applies hard eligibility filters, stores a weighted score
+with component-level explanations, and does not present an unchanged match twice.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -110,6 +113,16 @@ they are not global search APIs: the exact company boards must be chosen explici
 Staff.am, Job.am, LinkedIn, protected Telegram channels, browser sessions, CAPTCHA, and
 Cloudflare are not scraped or bypassed. See [vacancy-sources.md](docs/vacancy-sources.md).
 
+## Explainable matching
+
+Matching is calculated by application code, not by AI. The default weights are skills 35%,
+experience 20%, role 15%, location/work mode 15%, language 10%, and salary 5%; environment
+overrides must still add up to 100. Expired jobs, incompatible office locations, remote
+scopes that exclude Armenia, unselected work modes, clear role mismatches, and a disclosed
+salary below the user's minimum are excluded. Missing salary is scored neutrally and never
+causes an automatic rejection. Stored input fingerprints trigger rematching when the profile,
+preferences, or vacancy changes. Embeddings and AI-written explanations remain deferred.
+
 Accepted resumes must have matching PDF or DOCX extension, MIME type, size, and file
 signature. The server generates the private storage key; the original name is retained
 only as metadata. arq changes the status from `queued` to `processing`, then to
@@ -129,7 +142,8 @@ alembic check
 ```
 
 Migration `20260806_0006` creates canonical vacancies, source origins, and ingestion-run
-records. Migration `20260806_0007` adds privacy-scoped user vacancy submissions. Previous
+records. Migration `20260806_0007` adds privacy-scoped user vacancy submissions. Migration
+`20260806_0008` stores explainable per-user vacancy matches and presentation state. Previous
 migrations remain in the same linear chain.
 
 ## Quality checks

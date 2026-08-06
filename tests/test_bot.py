@@ -52,6 +52,7 @@ async def test_polling_entrypoint_closes_bot(monkeypatch: pytest.MonkeyPatch) ->
         profile_service=ANY,
         onboarding_service=ANY,
         vacancy_service=ANY,
+        matching_service=ANY,
         submission_service=ANY,
     )
     session.close.assert_awaited_once()

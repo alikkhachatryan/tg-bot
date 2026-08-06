@@ -292,14 +292,21 @@ async def test_main_menu_buttons_are_handled() -> None:
             )
         )
     )
-    vacancy_service = SimpleNamespace(
-        latest=AsyncMock(
+    vacancy_service = SimpleNamespace()
+    matching_service = SimpleNamespace(
+        new_matches=AsyncMock(
             return_value=[
                 SimpleNamespace(
-                    title="Python Developer",
-                    company="Example",
-                    location="Yerevan",
-                    canonical_url="https://example.com/job",
+                    vacancy=SimpleNamespace(
+                        title="Python Developer",
+                        company="Example",
+                        location="Yerevan",
+                        canonical_url="https://example.com/job",
+                    ),
+                    match=SimpleNamespace(
+                        score=91,
+                        explanations=["Совпавшие навыки: Python"],
+                    ),
                 )
             ]
         )
@@ -314,6 +321,7 @@ async def test_main_menu_buttons_are_handled() -> None:
         profile_service,
         onboarding_service,
         vacancy_service,
+        matching_service,
         submission_service,
     )
     assert "Python Developer" in message.answer.await_args.args[0]
@@ -325,6 +333,7 @@ async def test_main_menu_buttons_are_handled() -> None:
         profile_service,
         onboarding_service,
         vacancy_service,
+        matching_service,
         submission_service,
     )
     assert "Мой профиль" in message.answer.await_args.args[0]
@@ -336,6 +345,7 @@ async def test_main_menu_buttons_are_handled() -> None:
         profile_service,
         onboarding_service,
         vacancy_service,
+        matching_service,
         submission_service,
     )
     onboarding_service.start.assert_awaited_with(user_id)
@@ -347,6 +357,7 @@ async def test_main_menu_buttons_are_handled() -> None:
         profile_service,
         onboarding_service,
         vacancy_service,
+        matching_service,
         submission_service,
     )
     submission_service.begin.assert_awaited_with(user_id)
@@ -358,6 +369,7 @@ async def test_main_menu_buttons_are_handled() -> None:
         profile_service,
         onboarding_service,
         vacancy_service,
+        matching_service,
         submission_service,
     )
     submission_service.latest_private.assert_awaited_with(user_id)
