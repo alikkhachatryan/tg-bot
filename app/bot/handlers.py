@@ -5,7 +5,13 @@ from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, InaccessibleMessage, Message, Update
+from aiogram.types import (
+    CallbackQuery,
+    InaccessibleMessage,
+    Message,
+    MessageOriginChannel,
+    Update,
+)
 
 from app.bot.keyboards import (
     consent_keyboard,
@@ -13,11 +19,17 @@ from app.bot.keyboards import (
     onboarding_keyboard,
     profile_edit_keyboard,
     profile_review_keyboard,
+    submission_review_keyboard,
 )
 from app.services.onboarding import OnboardingService, OnboardingStep, OnboardingValidationError
 from app.services.profiles import ProfileService
 from app.services.queue import ResumeQueue
 from app.services.resumes import ResumeService, ResumeUpload, ResumeValidationError
+from app.services.submissions import (
+    SubmissionResult,
+    VacancySubmissionError,
+    VacancySubmissionService,
+)
 from app.services.telegram_users import (
     BetaAccessDeniedError,
     TelegramIdentity,
@@ -30,7 +42,9 @@ PRIVACY_TEXT = (
     "Бот хранит профиль и приватный файл резюме для персонального поиска вакансий. "
     "После вашего согласия текст резюме передаётся DeepSeek для структурированного анализа. "
     "Данные не используются для автоматической отправки откликов. Вы сможете удалить "
-    "резюме и аккаунт, отключить AI-обработку и уведомления."
+    "резюме и аккаунт, отключить AI-обработку и уведомления. Текст добавленной или "
+    "пересланной вакансии сохраняется только в вашей личной истории после отдельного "
+    "подтверждения и не публикуется в общей базе автоматически."
 )
 
 
@@ -167,12 +181,34 @@ async def delete_command(message: Message) -> None:
     await message.answer("Безопасное удаление данных будет добавлено в этапе 12.")
 
 
+async def add_job_command(
+    message: Message,
+    user_service: TelegramUserService,
+    submission_service: VacancySubmissionService,
+) -> None:
+    identity = identity_from_message(message)
+    if identity is None:
+        return
+    try:
+        user_id = await user_service.register(identity)
+    except BetaAccessDeniedError:
+        return
+    if not await user_service.has_required_consent(user_id):
+        await message.answer("Сначала примите условия обработки данных.")
+        return
+    await submission_service.begin(user_id)
+    await message.answer(
+        "Отправьте описание вакансии одним сообщением. Можно добавить ссылку на оригинал."
+    )
+
+
 async def main_menu_callback(
     callback: CallbackQuery,
     user_service: TelegramUserService,
     profile_service: ProfileService,
     onboarding_service: OnboardingService,
     vacancy_service: VacancyIngestionService,
+    submission_service: VacancySubmissionService,
 ) -> None:
     identity = TelegramIdentity(
         telegram_user_id=callback.from_user.id,
@@ -209,6 +245,31 @@ async def main_menu_callback(
     elif action == "settings":
         await callback.message.answer("Изменим настройки поиска.")
         await _send_onboarding_step(callback.message, await onboarding_service.start(user_id))
+    elif action == "add_job":
+        if not await user_service.has_required_consent(user_id):
+            await callback.message.answer(
+                "Сначала примите актуальные условия обработки данных.",
+                reply_markup=consent_keyboard(),
+            )
+            await callback.answer()
+            return
+        await submission_service.begin(user_id)
+        await callback.message.answer(
+            "Отправьте описание вакансии одним сообщением. Можно добавить ссылку на оригинал."
+        )
+    elif action == "personal_jobs":
+        if not await user_service.has_required_consent(user_id):
+            await callback.message.answer(
+                "Сначала примите актуальные условия обработки данных.",
+                reply_markup=consent_keyboard(),
+            )
+            await callback.answer()
+            return
+        await callback.message.answer(
+            _private_vacancy_list(await submission_service.latest_private(user_id)),
+            reply_markup=main_menu_keyboard(),
+            disable_web_page_preview=True,
+        )
     else:
         await callback.answer("Неизвестный раздел", show_alert=True)
         return
@@ -308,6 +369,7 @@ async def apply_profile_edit(
     user_service: TelegramUserService,
     profile_service: ProfileService,
     onboarding_service: OnboardingService,
+    submission_service: VacancySubmissionService,
 ) -> None:
     identity = identity_from_message(message)
     if identity is None or message.text is None:
@@ -315,6 +377,20 @@ async def apply_profile_edit(
     try:
         user_id = await user_service.register(identity)
     except BetaAccessDeniedError:
+        return
+    if await submission_service.is_awaiting_text(user_id):
+        if not await user_service.has_required_consent(user_id):
+            await message.answer(
+                "Сначала примите актуальные условия обработки данных.",
+                reply_markup=consent_keyboard(),
+            )
+            return
+        try:
+            result = await submission_service.submit(user_id, message.text, input_type="manual")
+        except VacancySubmissionError as exc:
+            await message.answer(_submission_error(exc.code))
+            return
+        await _send_submission_review(message, result)
         return
     profile = await profile_service.apply_pending_edit(user_id, message.text)
     if profile is not None:
@@ -330,6 +406,71 @@ async def apply_profile_edit(
         return
     if step is not None:
         await _send_onboarding_step(message, step)
+
+
+async def forwarded_vacancy(
+    message: Message,
+    user_service: TelegramUserService,
+    submission_service: VacancySubmissionService,
+) -> None:
+    identity = identity_from_message(message)
+    text = message.text or message.caption
+    if identity is None or not text:
+        return
+    try:
+        user_id = await user_service.register(identity)
+    except BetaAccessDeniedError:
+        return
+    if not await user_service.has_required_consent(user_id):
+        await message.answer("Сначала примите условия обработки данных.")
+        return
+    try:
+        result = await submission_service.submit(
+            user_id,
+            text,
+            input_type="forwarded",
+            source_url=_forwarded_source_url(message),
+        )
+    except VacancySubmissionError as exc:
+        await message.answer(_submission_error(exc.code))
+        return
+    await _send_submission_review(message, result)
+
+
+async def submission_callback(
+    callback: CallbackQuery,
+    user_service: TelegramUserService,
+    submission_service: VacancySubmissionService,
+) -> None:
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3 or parts[1] not in {"keep", "discard"}:
+        await callback.answer("Некорректное действие", show_alert=True)
+        return
+    identity = TelegramIdentity(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+        locale=callback.from_user.language_code,
+    )
+    try:
+        user_id = await user_service.register(identity)
+        submission_id = UUID(parts[2])
+    except (BetaAccessDeniedError, ValueError):
+        await callback.answer("Вакансия недоступна", show_alert=True)
+        return
+    keep = parts[1] == "keep"
+    if not await submission_service.confirm_private(user_id, submission_id, keep):
+        await callback.answer("Решение уже сохранено", show_alert=True)
+        return
+    if callback.message is not None:
+        text = (
+            "Вакансия сохранена только в вашей личной истории."
+            if keep
+            else "Вакансия не сохранена."
+        )
+        await callback.message.answer(text, reply_markup=main_menu_keyboard())
+    await callback.answer("Готово")
 
 
 async def onboarding_command(
@@ -432,6 +573,65 @@ def _vacancy_list(vacancies: list[Any]) -> str:
     )
 
 
+def _private_vacancy_list(submissions: list[Any]) -> str:
+    if not submissions:
+        return "В личной истории пока нет вакансий."
+    items = []
+    for submission in submissions:
+        company = escape(submission.company or "компания не указана")
+        location = f" — {escape(submission.location)}" if submission.location else ""
+        title = escape(submission.title)
+        if submission.source_url:
+            title = f'<a href="{escape(submission.source_url, quote=True)}">{title}</a>'
+        items.append(f"{title} — {company}{location}")
+    return "<b>Мои вакансии</b>\n\n" + "\n\n".join(items)
+
+
+async def _send_submission_review(
+    message: Message | InaccessibleMessage, result: SubmissionResult
+) -> None:
+    submission = result.submission
+    if result.duplicate and submission.status == "private":
+        await message.answer(
+            "Эта вакансия уже сохранена в вашей личной истории.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+    company = escape(submission.company or "не указана")
+    location = escape(submission.location or "не указана")
+    work_format = {
+        "remote": "remote",
+        "hybrid": "hybrid",
+        "office": "office",
+        "unspecified": "не указан",
+    }.get(submission.workplace_type, "не указан")
+    await message.answer(
+        "<b>Проверьте вакансию</b>\n\n"
+        f"Название: {escape(submission.title)}\n"
+        f"Компания: {company}\n"
+        f"Локация: {location}\n"
+        f"Формат: {work_format}\n\n"
+        "Добавить её только в вашу личную историю?",
+        reply_markup=submission_review_keyboard(str(submission.id)),
+    )
+
+
+def _submission_error(code: str) -> str:
+    if code == "too_large":
+        return "Описание слишком большое. Сократите его и попробуйте ещё раз."
+    return (
+        "Сообщение не похоже на описание вакансии. Добавьте название позиции, "
+        "требования и основные обязанности."
+    )
+
+
+def _forwarded_source_url(message: Message) -> str | None:
+    origin = message.forward_origin
+    if isinstance(origin, MessageOriginChannel) and origin.chat.username:
+        return f"https://t.me/{origin.chat.username}/{origin.message_id}"
+    return None
+
+
 async def _send_onboarding_step(
     message: Message | InaccessibleMessage, step: OnboardingStep
 ) -> None:
@@ -454,16 +654,19 @@ def create_router() -> Router:
     router.message.register(privacy_command, Command("privacy"))
     router.callback_query.register(privacy_callback, F.data == "privacy")
     router.callback_query.register(accept_consent, F.data == "consent:accept")
+    router.message.register(forwarded_vacancy, F.forward_origin)
     router.message.register(document_gate, F.document)
     router.message.register(menu, Command("menu"))
     router.message.register(help_command, Command("help"))
     router.message.register(cancel_command, Command("cancel"))
     router.message.register(delete_command, Command("delete_me"))
+    router.message.register(add_job_command, Command("add_job"))
     router.message.register(onboarding_command, Command("onboarding"))
     router.callback_query.register(main_menu_callback, F.data.startswith("menu:"))
     router.callback_query.register(confirm_profile, F.data.startswith("profile:confirm:"))
     router.callback_query.register(edit_profile_menu, F.data.startswith("profile:edit:"))
     router.callback_query.register(begin_profile_field_edit, F.data.startswith("profile:field:"))
+    router.callback_query.register(submission_callback, F.data.startswith("vacancy:"))
     router.message.register(apply_profile_edit, F.text)
     router.callback_query.register(onboarding_callback, F.data.startswith("onboard:"))
     return router

@@ -1,6 +1,7 @@
 from app.db.models.onboarding import OnboardingSession, SearchPreference
 from app.db.models.profile import CandidateProfile, ResumeParseRun
 from app.db.models.resume import ResumeDocument
+from app.db.models.submission import VacancySubmission
 from app.db.models.telegram import (
     Consent,
     ConversationState,
@@ -24,4 +25,5 @@ __all__ = [
     "Vacancy",
     "VacancyIngestionRun",
     "VacancyOrigin",
+    "VacancySubmission",
 ]
