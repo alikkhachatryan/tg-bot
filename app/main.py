@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
 from app.services.health import HealthService
+from app.services.onboarding import OnboardingService
 from app.services.profiles import ProfileService
 from app.services.queue import ArqResumeQueue
 from app.services.resumes import ResumeService
@@ -48,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         application.state.resume_queue = ArqResumeQueue(resolved_settings.redis_url)
         application.state.profile_service = ProfileService(application.state.session_factory)
+        application.state.onboarding_service = OnboardingService(application.state.session_factory)
         application.state.bot = (
             create_bot(resolved_settings) if resolved_settings.has_telegram_token else None
         )

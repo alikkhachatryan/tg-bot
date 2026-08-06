@@ -1,5 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.services.onboarding import Question
+
 
 def consent_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -57,3 +59,50 @@ def profile_edit_keyboard(profile_id: str) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def onboarding_keyboard(question: Question, can_go_back: bool) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if question.kind == "boolean":
+        rows.append(
+            [
+                InlineKeyboardButton(text="Да", callback_data=f"onboard:a:{question.key}:yes"),
+                InlineKeyboardButton(text="Нет", callback_data=f"onboard:a:{question.key}:no"),
+            ]
+        )
+    elif question.kind == "work_modes":
+        rows.extend(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="Remote", callback_data=f"onboard:a:{question.key}:remote"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Hybrid", callback_data=f"onboard:a:{question.key}:hybrid"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Office", callback_data=f"onboard:a:{question.key}:office"
+                    )
+                ],
+                [InlineKeyboardButton(text="Любой", callback_data=f"onboard:a:{question.key}:any")],
+            ]
+        )
+    elif question.kind == "currency":
+        rows.append(
+            [
+                InlineKeyboardButton(text=value, callback_data=f"onboard:a:{question.key}:{value}")
+                for value in ("AMD", "USD", "EUR", "RUB")
+            ]
+        )
+    controls: list[InlineKeyboardButton] = []
+    if can_go_back:
+        controls.append(InlineKeyboardButton(text="Назад", callback_data="onboard:back"))
+    if question.skippable:
+        controls.append(InlineKeyboardButton(text="Пропустить", callback_data="onboard:skip"))
+    if controls:
+        rows.append(controls)
+    return InlineKeyboardMarkup(inline_keyboard=rows)

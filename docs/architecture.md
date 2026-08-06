@@ -105,7 +105,8 @@ boundaries. External clients have timeouts and are closed during application shu
 4. **AI profile:** provider interface, fake/DeepSeek implementations, structured parsing,
    evidence/confidence, confirmation, and simple edits.
 5. **Onboarding:** branching question engine, one message at a time, back/skip/pause, and
-   restart-safe progress.
+   restart-safe progress. Initial search geography prioritizes Armenia/Yerevan and
+   international remote work available from Armenia; relocation requires an explicit yes.
 6. **Vacancies:** manual/forwarded intake and Remotive, Greenhouse, Lever, approved
    channel, and mock source adapters.
 7. **Normalization and deduplication:** sanitization, extraction, hashes, canonical jobs,

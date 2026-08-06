@@ -3,14 +3,16 @@ from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, Message, Update
+from aiogram.types import CallbackQuery, InaccessibleMessage, Message, Update
 
 from app.bot.keyboards import (
     consent_keyboard,
     main_menu_keyboard,
+    onboarding_keyboard,
     profile_edit_keyboard,
     profile_review_keyboard,
 )
+from app.services.onboarding import OnboardingService, OnboardingStep, OnboardingValidationError
 from app.services.profiles import ProfileService
 from app.services.queue import ResumeQueue
 from app.services.resumes import ResumeService, ResumeUpload, ResumeValidationError
@@ -166,6 +168,7 @@ async def confirm_profile(
     callback: CallbackQuery,
     user_service: TelegramUserService,
     profile_service: ProfileService,
+    onboarding_service: OnboardingService,
 ) -> None:
     identity = TelegramIdentity(
         telegram_user_id=callback.from_user.id,
@@ -184,7 +187,9 @@ async def confirm_profile(
         await callback.answer("Профиль уже изменён или недоступен", show_alert=True)
         return
     if callback.message is not None:
-        await callback.message.answer("Профиль подтверждён.", reply_markup=main_menu_keyboard())
+        step = await onboarding_service.start(user_id)
+        await callback.message.answer("Профиль подтверждён. Настроим поиск вакансий.")
+        await _send_onboarding_step(callback.message, step)
     await callback.answer("Готово")
 
 
@@ -251,6 +256,7 @@ async def apply_profile_edit(
     message: Message,
     user_service: TelegramUserService,
     profile_service: ProfileService,
+    onboarding_service: OnboardingService,
 ) -> None:
     identity = identity_from_message(message)
     if identity is None or message.text is None:
@@ -265,6 +271,82 @@ async def apply_profile_edit(
             "Изменение сохранено. Подтвердите профиль или исправьте другое поле.",
             reply_markup=profile_review_keyboard(str(profile.id)),
         )
+        return
+    try:
+        step = await onboarding_service.answer(user_id, message.text)
+    except OnboardingValidationError as exc:
+        await message.answer(str(exc))
+        return
+    if step is not None:
+        await _send_onboarding_step(message, step)
+
+
+async def onboarding_command(
+    message: Message,
+    user_service: TelegramUserService,
+    onboarding_service: OnboardingService,
+) -> None:
+    identity = identity_from_message(message)
+    if identity is None:
+        return
+    try:
+        user_id = await user_service.register(identity)
+    except BetaAccessDeniedError:
+        return
+    await _send_onboarding_step(message, await onboarding_service.start(user_id))
+
+
+async def onboarding_callback(
+    callback: CallbackQuery,
+    user_service: TelegramUserService,
+    onboarding_service: OnboardingService,
+) -> None:
+    identity = TelegramIdentity(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+        locale=callback.from_user.language_code,
+    )
+    try:
+        user_id = await user_service.register(identity)
+    except BetaAccessDeniedError:
+        await callback.answer("Доступ ограничен", show_alert=True)
+        return
+    data = callback.data or ""
+    try:
+        if data == "onboard:back":
+            step = await onboarding_service.back(user_id)
+        elif data == "onboard:skip":
+            step = await onboarding_service.skip(user_id)
+        else:
+            parts = data.split(":", 3)
+            if len(parts) != 4 or parts[1] != "a":
+                await callback.answer("Некорректное действие", show_alert=True)
+                return
+            step = await onboarding_service.answer(user_id, parts[3], expected_key=parts[2])
+    except OnboardingValidationError as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return
+    if callback.message is not None and step is not None:
+        await _send_onboarding_step(callback.message, step)
+    await callback.answer()
+
+
+async def _send_onboarding_step(
+    message: Message | InaccessibleMessage, step: OnboardingStep
+) -> None:
+    if step.completed:
+        await message.answer(
+            "Настройки поиска сохранены. Приоритет: Армения и доступная международная удалёнка.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+    if step.question is not None:
+        await message.answer(
+            step.question.prompt,
+            reply_markup=onboarding_keyboard(step.question, step.can_go_back),
+        )
 
 
 def create_router() -> Router:
@@ -278,8 +360,10 @@ def create_router() -> Router:
     router.message.register(help_command, Command("help"))
     router.message.register(cancel_command, Command("cancel"))
     router.message.register(delete_command, Command("delete_me"))
+    router.message.register(onboarding_command, Command("onboarding"))
     router.callback_query.register(confirm_profile, F.data.startswith("profile:confirm:"))
     router.callback_query.register(edit_profile_menu, F.data.startswith("profile:edit:"))
     router.callback_query.register(begin_profile_field_edit, F.data.startswith("profile:field:"))
     router.message.register(apply_profile_edit, F.text)
+    router.callback_query.register(onboarding_callback, F.data.startswith("onboard:"))
     return router
