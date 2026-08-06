@@ -18,6 +18,8 @@ from app.db.models.telegram import TelegramAccount
 from app.services.profiles import ProfileService
 from app.services.resume_extraction import ResumeTextMissingError, extract_resume_text
 from app.services.storage import PrivateStorage
+from app.services.vacancies import VacancyIngestionService
+from app.sources.base import VacancySource
 
 logger = structlog.get_logger()
 
@@ -28,6 +30,17 @@ async def worker_healthcheck(ctx: dict[str, Any]) -> str:
 
 async def scheduler_heartbeat(ctx: dict[str, Any]) -> str:
     return "ok"
+
+
+async def ingest_vacancies(ctx: dict[str, Any]) -> dict[str, str]:
+    sessions: async_sessionmaker[AsyncSession] = ctx["sessions"]
+    sources: list[VacancySource] = ctx.get("vacancy_sources", [])
+    service = VacancyIngestionService(sessions)
+    results: dict[str, str] = {}
+    for source in sources:
+        run = await service.ingest_source(source)
+        results[source.name] = run.status
+    return results
 
 
 async def process_resume(ctx: dict[str, Any], resume_id: str) -> str:
@@ -127,11 +140,16 @@ async def parse_resume_profile(ctx: dict[str, Any], resume_id: UUID) -> str:
         )
     except AIProviderError as exc:
         await _finish_parse_run(sessions, run_id, "failed", exc.code)
+        message = (
+            "На балансе DeepSeek недостаточно средств. Пополните баланс и повторите обработку."
+            if exc.code == "insufficient_balance"
+            else "AI-сервис временно не смог разобрать резюме. Попробуйте обработку позже."
+        )
         await _notify(
             sessions,
             bot,
             document.user_id,
-            "AI-сервис временно не смог разобрать резюме. Попробуйте обработку позже.",
+            message,
         )
         return "ai_failed"
     except Exception as exc:

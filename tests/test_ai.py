@@ -27,6 +27,7 @@ async def test_deepseek_returns_validated_profile() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         assert payload["response_format"] == {"type": "json_object"}
+        assert payload["thinking"] == {"type": "disabled"}
         return deepseek_response(
             json.dumps(
                 {
@@ -56,6 +57,50 @@ async def test_deepseek_returns_validated_profile() -> None:
     assert result.profile.current_title == "Python Developer"
     assert result.request_id == "request-123"
     assert result.input_tokens == 100
+
+
+async def test_deepseek_normalizes_string_skills() -> None:
+    client = httpx.AsyncClient(
+        base_url="https://api.deepseek.com",
+        transport=httpx.MockTransport(
+            lambda request: deepseek_response('{"skills":["Python","FastAPI"]}')
+        ),
+    )
+    provider = DeepSeekAIProvider(
+        api_key="secret",
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
+        timeout_seconds=10,
+        max_retries=0,
+        client=client,
+    )
+    try:
+        result = await provider.parse_resume("resume")
+    finally:
+        await client.aclose()
+
+    assert [skill.name for skill in result.profile.skills] == ["Python", "FastAPI"]
+
+
+async def test_deepseek_reports_insufficient_balance() -> None:
+    client = httpx.AsyncClient(
+        base_url="https://api.deepseek.com",
+        transport=httpx.MockTransport(lambda request: httpx.Response(402)),
+    )
+    provider = DeepSeekAIProvider(
+        api_key="secret",
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
+        timeout_seconds=10,
+        max_retries=0,
+        client=client,
+    )
+    try:
+        with pytest.raises(AIProviderError) as error:
+            await provider.parse_resume("resume")
+        assert error.value.code == "insufficient_balance"
+    finally:
+        await client.aclose()
 
 
 async def test_deepseek_rejects_invalid_or_empty_json() -> None:

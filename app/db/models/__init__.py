@@ -8,6 +8,7 @@ from app.db.models.telegram import (
     TelegramAccount,
     User,
 )
+from app.db.models.vacancy import Vacancy, VacancyIngestionRun, VacancyOrigin
 
 __all__ = [
     "CandidateProfile",
@@ -20,4 +21,7 @@ __all__ = [
     "SearchPreference",
     "TelegramAccount",
     "User",
+    "Vacancy",
+    "VacancyIngestionRun",
+    "VacancyOrigin",
 ]

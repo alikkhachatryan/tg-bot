@@ -23,6 +23,19 @@ def test_empty_beta_ids_are_supported() -> None:
     assert Settings(_env_file=None).beta_user_ids == frozenset()
 
 
+def test_vacancy_source_csv_settings_are_parsed() -> None:
+    settings = Settings(
+        _env_file=None,
+        vacancy_sources="hh, remotive",
+        hh_focus_locations="Armenia, Yerevan",
+        greenhouse_boards="company-one,company-two",
+    )
+
+    assert settings.enabled_vacancy_sources == ("hh", "remotive")
+    assert settings.hh_location_names == ("Armenia", "Yerevan")
+    assert settings.greenhouse_board_tokens == ("company-one", "company-two")
+
+
 def test_deepseek_provider_requires_api_key() -> None:
     with pytest.raises(ValidationError, match="AI_API_KEY"):
         Settings(_env_file=None, ai_provider="deepseek")

@@ -9,14 +9,15 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stages 1 through 5 establish the deployable foundation, Telegram identity layer, secure
+Stages 1 through 6 establish the deployable foundation, Telegram identity layer, secure
 resume ingestion, a reviewable AI-created candidate profile, and restart-safe search
 onboarding: FastAPI,
 aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
 endpoints, Docker Compose, CI, closed-beta access, versioned consent, durable conversation
 state, protected webhook delivery, update deduplication, local polling, private PDF/DOCX
 storage, background text extraction, DeepSeek/fake AI providers, strict Pydantic output,
-Telegram confirmation/editing, and one-question-at-a-time search preferences.
+Telegram confirmation/editing, one-question-at-a-time search preferences, and scheduled
+official vacancy-source adapters with canonical storage and provenance.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -38,6 +39,11 @@ copy .env.example .env     # Linux/macOS: cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
+On this Windows workstation the local file is
+`C:\Users\Professional\Documents\laravel learning\tg-bot\.env`. It is intentionally
+ignored by Git. In File Explorer enable **View > Show > Hidden items** if dotfiles are
+not visible. Put real secrets only in this file, never in `.env.example` or chat.
+
 The default `AI_PROVIDER=fake` makes local development and ordinary tests free of real
 AI requests. For real parsing set `AI_PROVIDER=deepseek`, put the separately issued key
 in `AI_API_KEY`, and keep `AI_MODEL=deepseek-v4-flash`. Do not put real keys in
@@ -51,6 +57,10 @@ docker compose --profile proxy up nginx
 docker compose --profile polling up bot-polling
 docker compose --profile storage up minio
 ```
+
+PostgreSQL is exposed to the Windows host on port `5433` by default so it does not
+collide with an existing local PostgreSQL installation on `5432`. Containers still use
+`postgres:5432`; override only the host port through `POSTGRES_PORT` when needed.
 
 The production path uses Telegram webhook delivery through the FastAPI app. The polling
 service is only for local development and must not run alongside the webhook consumer.
@@ -77,6 +87,25 @@ across process restarts. The initial market strategy prioritizes Armenia and job
 Yerevan, then international remote roles available from Armenia, followed by suitable
 regional roles. Relocation is never assumed.
 
+## Vacancy sources
+
+The scheduler imports approved sources four times per day. Each adapter has an HTTP
+timeout, bounded retries, an ingestion audit record, a canonical vacancy mapping, and a
+source-origin record. Duplicate content from two sources is merged while both original
+links and attributions remain available.
+
+- `REMOTIVE_API_URL` enables the remote feed and retains Remotive attribution.
+- Add `hh` to `VACANCY_SOURCES`, then set `HH_USER_AGENT` and `HH_ACCESS_TOKEN`
+  from a registered HH application. Armenia and Yerevan are resolved
+  from HH's live area directory using `HH_FOCUS_LOCATIONS`.
+- Put comma-separated public Greenhouse board tokens in `GREENHOUSE_BOARDS`.
+- Put comma-separated public Lever site names in `LEVER_SITES`.
+
+Greenhouse and Lever are useful for selected Armenian and international companies, but
+they are not global search APIs: the exact company boards must be chosen explicitly.
+Staff.am, Job.am, LinkedIn, protected Telegram channels, browser sessions, CAPTCHA, and
+Cloudflare are not scraped or bypassed. See [vacancy-sources.md](docs/vacancy-sources.md).
+
 Accepted resumes must have matching PDF or DOCX extension, MIME type, size, and file
 signature. The server generates the private storage key; the original name is retained
 only as metadata. arq changes the status from `queued` to `processing`, then to
@@ -95,8 +124,8 @@ alembic upgrade head
 alembic check
 ```
 
-Migration `20260806_0003` creates `resume_documents`, including owner, private object key,
-content hash, processing status, extracted text, and a safe error code.
+Migration `20260806_0006` creates canonical vacancies, source origins, and ingestion-run
+records. Previous migrations remain in the same linear chain.
 
 ## Quality checks
 

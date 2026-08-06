@@ -5,6 +5,9 @@ from uuid import UUID
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
+RESUME_QUEUE_NAME = "arq:resume"
+SCHEDULER_QUEUE_NAME = "arq:scheduler"
+
 
 class ResumeQueue(Protocol):
     async def enqueue(self, resume_id: UUID) -> None: ...
@@ -25,7 +28,12 @@ class ArqResumeQueue:
 
     async def enqueue(self, resume_id: UUID) -> None:
         redis = await self._pool()
-        job = await redis.enqueue_job("process_resume", str(resume_id), _job_id=str(resume_id))
+        job = await redis.enqueue_job(
+            "process_resume",
+            str(resume_id),
+            _job_id=str(resume_id),
+            _queue_name=RESUME_QUEUE_NAME,
+        )
         if job is None:
             raise RuntimeError("Resume job could not be enqueued")
 

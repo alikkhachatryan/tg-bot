@@ -18,6 +18,7 @@ from app.services.queue import ArqResumeQueue
 from app.services.resumes import ResumeService
 from app.services.storage import create_storage
 from app.services.telegram_users import TelegramUpdateService, TelegramUserService
+from app.services.vacancies import VacancyIngestionService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -50,6 +51,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.resume_queue = ArqResumeQueue(resolved_settings.redis_url)
         application.state.profile_service = ProfileService(application.state.session_factory)
         application.state.onboarding_service = OnboardingService(application.state.session_factory)
+        application.state.vacancy_service = VacancyIngestionService(
+            application.state.session_factory
+        )
         application.state.bot = (
             create_bot(resolved_settings) if resolved_settings.has_telegram_token else None
         )

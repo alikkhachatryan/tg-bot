@@ -3,6 +3,8 @@ from uuid import uuid4
 import pytest
 
 from app.db.models.onboarding import SearchPreference
+from app.db.models.profile import CandidateProfile
+from app.db.models.resume import ResumeDocument
 from app.db.models.telegram import User
 from app.services.onboarding import OnboardingService, OnboardingValidationError
 
@@ -48,6 +50,46 @@ async def test_onboarding_branches_persists_and_resumes(sqlite_sessions) -> None
     assert preferences.min_salary is None
 
 
+async def test_onboarding_reuses_roles_from_confirmed_profile(sqlite_sessions) -> None:
+    user_id = uuid4()
+    resume_id = uuid4()
+    async with sqlite_sessions.begin() as session:
+        session.add(User(id=user_id, status="active"))
+
+    service = OnboardingService(sqlite_sessions)
+    initial = await service.start(user_id)
+    assert initial.question is not None and initial.question.key == "desired_roles"
+
+    async with sqlite_sessions.begin() as session:
+        session.add(
+            ResumeDocument(
+                id=resume_id,
+                user_id=user_id,
+                telegram_file_id="file",
+                original_filename="resume.pdf",
+                storage_key=f"resumes/{user_id}/{resume_id}.pdf",
+                media_type="application/pdf",
+                size_bytes=100,
+                sha256="b" * 64,
+                status="processed",
+            )
+        )
+        session.add(
+            CandidateProfile(
+                user_id=user_id,
+                resume_id=resume_id,
+                status="confirmed",
+                desired_roles=["Backend Developer", "Python Developer"],
+            )
+        )
+
+    resumed = await service.start(user_id)
+
+    assert resumed.question is not None
+    assert resumed.question.key == "preferred_locations"
+    assert resumed.can_go_back
+
+
 async def test_onboarding_back_rewinds_last_answer(sqlite_sessions) -> None:
     user_id = uuid4()
     async with sqlite_sessions.begin() as session:
@@ -87,3 +129,37 @@ async def test_onboarding_relocation_salary_and_stale_button(sqlite_sessions) ->
     await service.answer(user_id, "USD", expected_key="salary_currency")
     completed = await service.skip(user_id)
     assert completed is not None and completed.completed
+
+
+async def test_onboarding_work_modes_support_multiple_selection(sqlite_sessions) -> None:
+    user_id = uuid4()
+    async with sqlite_sessions.begin() as session:
+        session.add(User(id=user_id, status="active"))
+    service = OnboardingService(sqlite_sessions)
+    await service.start(user_id)
+    await service.answer(user_id, "Backend Developer")
+    await service.answer(user_id, "Армения")
+
+    step = await service.toggle_work_mode(user_id, "remote")
+    assert step is not None and step.selected_values == ("remote",)
+    step = await service.toggle_work_mode(user_id, "hybrid")
+    assert step is not None and step.selected_values == ("remote", "hybrid")
+    step = await service.toggle_work_mode(user_id, "remote")
+    assert step is not None and step.selected_values == ("hybrid",)
+
+    advanced = await service.submit_work_modes(user_id)
+    assert advanced is not None and advanced.question is not None
+    assert advanced.question.key == "allow_international_remote"
+
+
+async def test_onboarding_requires_a_work_mode_selection(sqlite_sessions) -> None:
+    user_id = uuid4()
+    async with sqlite_sessions.begin() as session:
+        session.add(User(id=user_id, status="active"))
+    service = OnboardingService(sqlite_sessions)
+    await service.start(user_id)
+    await service.answer(user_id, "Backend Developer")
+    await service.answer(user_id, "Армения")
+
+    with pytest.raises(OnboardingValidationError, match="хотя бы один"):
+        await service.submit_work_modes(user_id)
