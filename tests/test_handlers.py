@@ -4,7 +4,10 @@ from uuid import uuid4
 
 from app.bot.handlers import (
     accept_consent,
+    apply_profile_edit,
+    begin_profile_field_edit,
     cancel_command,
+    confirm_profile,
     delete_command,
     document_gate,
     help_command,
@@ -173,3 +176,35 @@ async def test_basic_commands_and_privacy_callbacks() -> None:
     callback = SimpleNamespace(message=message, answer=AsyncMock())
     await privacy_callback(callback)
     callback.answer.assert_awaited_once()
+
+
+async def test_profile_confirmation_and_edit_flow() -> None:
+    profile_id = uuid4()
+    callback = SimpleNamespace(
+        from_user=fake_sender(),
+        message=fake_message(),
+        data=f"profile:confirm:{profile_id}",
+        answer=AsyncMock(),
+    )
+    user_service = SimpleNamespace(register=AsyncMock(return_value=uuid4()))
+    profile_service = SimpleNamespace(
+        confirm=AsyncMock(return_value=True),
+        begin_edit=AsyncMock(return_value=True),
+        apply_pending_edit=AsyncMock(return_value=SimpleNamespace(id=profile_id)),
+    )
+
+    await confirm_profile(callback, user_service, profile_service)
+    profile_service.confirm.assert_awaited_once()
+    callback.answer.assert_awaited_with("Готово")
+
+    callback.data = f"profile:field:t:{profile_id}"
+    callback.answer.reset_mock()
+    await begin_profile_field_edit(callback, user_service, profile_service)
+    profile_service.begin_edit.assert_awaited_once()
+    callback.message.answer.assert_awaited()
+
+    message = fake_message()
+    message.text = "Senior Backend Developer"
+    await apply_profile_edit(message, user_service, profile_service)
+    profile_service.apply_pending_edit.assert_awaited_once()
+    assert "Изменение сохранено" in message.answer.await_args.args[0]

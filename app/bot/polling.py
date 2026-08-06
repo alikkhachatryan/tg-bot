@@ -4,6 +4,7 @@ from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
+from app.services.profiles import ProfileService
 from app.services.queue import ArqResumeQueue
 from app.services.resumes import ResumeService
 from app.services.storage import create_storage
@@ -26,6 +27,7 @@ async def run_polling() -> None:
             user_service=user_service,
             resume_service=resume_service,
             resume_queue=resume_queue,
+            profile_service=ProfileService(sessions),
         )
     finally:
         await resume_queue.close()

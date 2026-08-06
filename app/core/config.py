@@ -26,12 +26,16 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_webhook_url: str | None = None
     telegram_webhook_secret: SecretStr | None = None
-    privacy_policy_version: str = "2026-08-06"
+    privacy_policy_version: str = "2026-08-06-deepseek-v1"
     telegram_update_claim_timeout_seconds: int = Field(default=300, ge=30, le=3600)
 
-    ai_provider: Literal["fake", "openai"] = "fake"
+    ai_provider: Literal["fake", "deepseek"] = "fake"
     ai_api_key: SecretStr | None = None
-    ai_model: str = "gpt-5.6-luna"
+    ai_base_url: str = "https://api.deepseek.com"
+    ai_model: str = "deepseek-v4-flash"
+    ai_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    ai_max_retries: int = Field(default=2, ge=0, le=5)
+    ai_max_input_chars: int = Field(default=120_000, ge=10_000, le=1_000_000)
     ai_embedding_model: str | None = None
 
     storage_driver: Literal["local", "s3"] = "local"
@@ -70,8 +74,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_provider_and_production_settings(self) -> Self:
-        if self.ai_provider == "openai" and not _has_secret(self.ai_api_key):
-            raise ValueError("AI_API_KEY is required when AI_PROVIDER=openai")
+        if self.ai_provider == "deepseek" and not _has_secret(self.ai_api_key):
+            raise ValueError("AI_API_KEY is required when AI_PROVIDER=deepseek")
+        if self.is_production and not self.ai_base_url.startswith("https://"):
+            raise ValueError("AI_BASE_URL must use HTTPS in production")
 
         if not self.is_production:
             return self

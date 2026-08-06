@@ -18,3 +18,42 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Настройки", callback_data="menu:settings")],
         ]
     )
+
+
+def profile_review_keyboard(profile_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Подтвердить", callback_data=f"profile:confirm:{profile_id}"
+                ),
+                InlineKeyboardButton(text="Исправить", callback_data=f"profile:edit:{profile_id}"),
+            ]
+        ]
+    )
+
+
+def profile_edit_keyboard(profile_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Имя", callback_data=f"profile:field:n:{profile_id}")],
+            [
+                InlineKeyboardButton(
+                    text="Текущая должность",
+                    callback_data=f"profile:field:t:{profile_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Желаемые роли",
+                    callback_data=f"profile:field:r:{profile_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Описание",
+                    callback_data=f"profile:field:s:{profile_id}",
+                )
+            ],
+        ]
+    )

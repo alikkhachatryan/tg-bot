@@ -45,7 +45,11 @@ async def test_polling_entrypoint_closes_bot(monkeypatch: pytest.MonkeyPatch) ->
     await polling.run_polling()
 
     dispatcher.start_polling.assert_awaited_once_with(
-        bot, user_service=ANY, resume_service=ANY, resume_queue=ANY
+        bot,
+        user_service=ANY,
+        resume_service=ANY,
+        resume_queue=ANY,
+        profile_service=ANY,
     )
     session.close.assert_awaited_once()
     engine.dispose.assert_awaited_once()

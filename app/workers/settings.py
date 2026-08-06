@@ -2,6 +2,7 @@ from typing import Any, ClassVar
 
 from arq.connections import RedisSettings
 
+from app.ai import create_ai_provider
 from app.bot.factory import create_bot
 from app.core.config import get_settings
 from app.db.session import create_engine, create_session_factory
@@ -15,6 +16,7 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["engine"] = engine
     ctx["sessions"] = create_session_factory(engine)
     ctx["storage"] = create_storage(settings)
+    ctx["ai_provider"] = create_ai_provider(settings)
     ctx["bot"] = create_bot(settings) if settings.has_telegram_token else None
 
 
@@ -22,6 +24,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     bot = ctx.get("bot")
     if bot is not None:
         await bot.session.close()
+    await ctx["ai_provider"].close()
     await ctx["engine"].dispose()
 
 

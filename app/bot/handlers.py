@@ -1,10 +1,17 @@
 from io import BytesIO
+from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message, Update
 
-from app.bot.keyboards import consent_keyboard, main_menu_keyboard
+from app.bot.keyboards import (
+    consent_keyboard,
+    main_menu_keyboard,
+    profile_edit_keyboard,
+    profile_review_keyboard,
+)
+from app.services.profiles import ProfileService
 from app.services.queue import ResumeQueue
 from app.services.resumes import ResumeService, ResumeUpload, ResumeValidationError
 from app.services.telegram_users import (
@@ -16,7 +23,7 @@ from app.services.telegram_users import (
 PRIVACY_TEXT = (
     "<b>Политика конфиденциальности</b>\n\n"
     "Бот хранит профиль и приватный файл резюме для персонального поиска вакансий. "
-    "После вашего согласия текст резюме передаётся OpenAI для структурированного анализа. "
+    "После вашего согласия текст резюме передаётся DeepSeek для структурированного анализа. "
     "Данные не используются для автоматической отправки откликов. Вы сможете удалить "
     "резюме и аккаунт, отключить AI-обработку и уведомления."
 )
@@ -155,6 +162,111 @@ async def delete_command(message: Message) -> None:
     await message.answer("Безопасное удаление данных будет добавлено в этапе 12.")
 
 
+async def confirm_profile(
+    callback: CallbackQuery,
+    user_service: TelegramUserService,
+    profile_service: ProfileService,
+) -> None:
+    identity = TelegramIdentity(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+        locale=callback.from_user.language_code,
+    )
+    try:
+        user_id = await user_service.register(identity)
+        profile_id = UUID((callback.data or "").rsplit(":", 1)[-1])
+    except (BetaAccessDeniedError, ValueError):
+        await callback.answer("Профиль недоступен", show_alert=True)
+        return
+    if not await profile_service.confirm(user_id, profile_id):
+        await callback.answer("Профиль уже изменён или недоступен", show_alert=True)
+        return
+    if callback.message is not None:
+        await callback.message.answer("Профиль подтверждён.", reply_markup=main_menu_keyboard())
+    await callback.answer("Готово")
+
+
+async def edit_profile_menu(callback: CallbackQuery) -> None:
+    try:
+        profile_id = UUID((callback.data or "").rsplit(":", 1)[-1])
+    except ValueError:
+        await callback.answer("Профиль недоступен", show_alert=True)
+        return
+    if callback.message is not None:
+        await callback.message.answer(
+            "Что нужно исправить?", reply_markup=profile_edit_keyboard(str(profile_id))
+        )
+    await callback.answer()
+
+
+async def begin_profile_field_edit(
+    callback: CallbackQuery,
+    user_service: TelegramUserService,
+    profile_service: ProfileService,
+) -> None:
+    parts = (callback.data or "").split(":")
+    if len(parts) != 4:
+        await callback.answer("Некорректное действие", show_alert=True)
+        return
+    field_codes = {
+        "n": "full_name",
+        "t": "current_title",
+        "r": "desired_roles",
+        "s": "professional_summary",
+    }
+    field, raw_profile_id = field_codes.get(parts[2]), parts[3]
+    if field is None:
+        await callback.answer("Некорректное поле", show_alert=True)
+        return
+    identity = TelegramIdentity(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+        locale=callback.from_user.language_code,
+    )
+    try:
+        user_id = await user_service.register(identity)
+        profile_id = UUID(raw_profile_id)
+    except (BetaAccessDeniedError, ValueError):
+        await callback.answer("Профиль недоступен", show_alert=True)
+        return
+    if not await profile_service.begin_edit(user_id, profile_id, field):
+        await callback.answer("Поле недоступно", show_alert=True)
+        return
+    prompts = {
+        "full_name": "Отправьте правильное имя одним сообщением.",
+        "current_title": "Отправьте текущую должность одним сообщением.",
+        "desired_roles": "Отправьте желаемые роли через запятую.",
+        "professional_summary": "Отправьте исправленное профессиональное описание.",
+    }
+    if callback.message is not None:
+        await callback.message.answer(prompts[field])
+    await callback.answer()
+
+
+async def apply_profile_edit(
+    message: Message,
+    user_service: TelegramUserService,
+    profile_service: ProfileService,
+) -> None:
+    identity = identity_from_message(message)
+    if identity is None or message.text is None:
+        return
+    try:
+        user_id = await user_service.register(identity)
+    except BetaAccessDeniedError:
+        return
+    profile = await profile_service.apply_pending_edit(user_id, message.text)
+    if profile is not None:
+        await message.answer(
+            "Изменение сохранено. Подтвердите профиль или исправьте другое поле.",
+            reply_markup=profile_review_keyboard(str(profile.id)),
+        )
+
+
 def create_router() -> Router:
     router = Router(name="core")
     router.message.register(start, CommandStart())
@@ -166,4 +278,8 @@ def create_router() -> Router:
     router.message.register(help_command, Command("help"))
     router.message.register(cancel_command, Command("cancel"))
     router.message.register(delete_command, Command("delete_me"))
+    router.callback_query.register(confirm_profile, F.data.startswith("profile:confirm:"))
+    router.callback_query.register(edit_profile_menu, F.data.startswith("profile:edit:"))
+    router.callback_query.register(begin_profile_field_edit, F.data.startswith("profile:field:"))
+    router.message.register(apply_profile_edit, F.text)
     return router

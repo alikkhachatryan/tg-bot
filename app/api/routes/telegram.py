@@ -41,6 +41,7 @@ async def telegram_webhook(
             user_service=user_service,
             resume_service=request.app.state.resume_service,
             resume_queue=request.app.state.resume_queue,
+            profile_service=request.app.state.profile_service,
         )
         await update_service.complete(update.update_id)
     except Exception:
