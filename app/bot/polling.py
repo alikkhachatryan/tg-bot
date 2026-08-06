@@ -9,6 +9,7 @@ from app.services.profiles import ProfileService
 from app.services.queue import ArqResumeQueue
 from app.services.resumes import ResumeService
 from app.services.storage import create_storage
+from app.services.submissions import VacancySubmissionService
 from app.services.telegram_users import TelegramUserService
 from app.services.vacancies import VacancyIngestionService
 
@@ -32,6 +33,7 @@ async def run_polling() -> None:
             profile_service=ProfileService(sessions),
             onboarding_service=OnboardingService(sessions),
             vacancy_service=VacancyIngestionService(sessions),
+            submission_service=VacancySubmissionService(sessions),
         )
     finally:
         await resume_queue.close()

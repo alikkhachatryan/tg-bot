@@ -50,7 +50,9 @@ async def test_onboarding_branches_persists_and_resumes(sqlite_sessions) -> None
     assert preferences.min_salary is None
 
 
-async def test_onboarding_reuses_roles_from_confirmed_profile(sqlite_sessions) -> None:
+async def test_onboarding_reuses_roles_and_languages_from_confirmed_profile(
+    sqlite_sessions,
+) -> None:
     user_id = uuid4()
     resume_id = uuid4()
     async with sqlite_sessions.begin() as session:
@@ -80,6 +82,10 @@ async def test_onboarding_reuses_roles_from_confirmed_profile(sqlite_sessions) -
                 resume_id=resume_id,
                 status="confirmed",
                 desired_roles=["Backend Developer", "Python Developer"],
+                languages=[
+                    {"name": "Armenian", "level": "native"},
+                    {"name": "English", "level": "B2"},
+                ],
             )
         )
 
@@ -88,6 +94,17 @@ async def test_onboarding_reuses_roles_from_confirmed_profile(sqlite_sessions) -
     assert resumed.question is not None
     assert resumed.question.key == "preferred_locations"
     assert resumed.can_go_back
+
+    await service.answer(user_id, "Армения")
+    await service.answer(user_id, "any")
+    await service.answer(user_id, "yes")
+    await service.answer(user_id, "no")
+    completed = await service.skip(user_id)
+    assert completed is not None and completed.completed
+    async with sqlite_sessions() as session:
+        preferences = await session.get(SearchPreference, user_id)
+    assert preferences is not None
+    assert preferences.languages == ["Armenian", "English"]
 
 
 async def test_onboarding_back_rewinds_last_answer(sqlite_sessions) -> None:

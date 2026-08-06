@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_webhook_url: str | None = None
     telegram_webhook_secret: SecretStr | None = None
-    privacy_policy_version: str = "2026-08-06-deepseek-v1"
+    privacy_policy_version: str = "2026-08-06-vacancy-submissions-v2"
     telegram_update_claim_timeout_seconds: int = Field(default=300, ge=30, le=3600)
 
     ai_provider: Literal["fake", "deepseek"] = "fake"

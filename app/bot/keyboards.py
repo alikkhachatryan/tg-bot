@@ -18,6 +18,8 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Новые вакансии", callback_data="menu:new_jobs")],
             [InlineKeyboardButton(text="Мой профиль", callback_data="menu:profile")],
             [InlineKeyboardButton(text="Настройки", callback_data="menu:settings")],
+            [InlineKeyboardButton(text="Добавить вакансию", callback_data="menu:add_job")],
+            [InlineKeyboardButton(text="Мои вакансии", callback_data="menu:personal_jobs")],
         ]
     )
 
@@ -31,6 +33,25 @@ def profile_review_keyboard(profile_id: str) -> InlineKeyboardMarkup:
                 ),
                 InlineKeyboardButton(text="Исправить", callback_data=f"profile:edit:{profile_id}"),
             ]
+        ]
+    )
+
+
+def submission_review_keyboard(submission_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Сохранить для себя",
+                    callback_data=f"vacancy:keep:{submission_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Не сохранять",
+                    callback_data=f"vacancy:discard:{submission_id}",
+                )
+            ],
         ]
     )
 

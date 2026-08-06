@@ -9,7 +9,7 @@ automatic job application, userbot, restricted-channel access, or prohibited scr
 
 ## Current status
 
-Stages 1 through 6 establish the deployable foundation, Telegram identity layer, secure
+Stages 1 through 7 establish the deployable foundation, Telegram identity layer, secure
 resume ingestion, a reviewable AI-created candidate profile, and restart-safe search
 onboarding: FastAPI,
 aiogram, async SQLAlchemy, PostgreSQL, Redis, Alembic, arq, structured logging, health
@@ -18,6 +18,10 @@ state, protected webhook delivery, update deduplication, local polling, private 
 storage, background text extraction, DeepSeek/fake AI providers, strict Pydantic output,
 Telegram confirmation/editing, one-question-at-a-time search preferences, and scheduled
 official vacancy-source adapters with canonical storage and provenance.
+Users can also submit vacancy text with `/add_job` or forward a Telegram post. The bot
+normalizes a private draft, detects per-user duplicates, and requires explicit confirmation
+before saving it to personal history. User submissions are never promoted to the shared
+vacancy catalog automatically.
 
 See [architecture.md](docs/architecture.md) for decisions, the MVP data model, project
 layout, and implementation roadmap.
@@ -125,7 +129,8 @@ alembic check
 ```
 
 Migration `20260806_0006` creates canonical vacancies, source origins, and ingestion-run
-records. Previous migrations remain in the same linear chain.
+records. Migration `20260806_0007` adds privacy-scoped user vacancy submissions. Previous
+migrations remain in the same linear chain.
 
 ## Quality checks
 

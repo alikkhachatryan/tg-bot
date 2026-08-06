@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from app.bot.handlers import (
     accept_consent,
+    add_job_command,
     apply_profile_edit,
     begin_profile_field_edit,
     cancel_command,
@@ -18,9 +19,11 @@ from app.bot.handlers import (
     privacy_callback,
     privacy_command,
     start,
+    submission_callback,
 )
 from app.services.onboarding import OnboardingStep, Question
 from app.services.resumes import DOCX_MEDIA_TYPE, ResumeValidationError
+from app.services.submissions import SubmissionResult
 from app.services.telegram_users import BetaAccessDeniedError
 
 
@@ -204,6 +207,7 @@ async def test_profile_confirmation_and_edit_flow() -> None:
         ),
         answer=AsyncMock(return_value=None),
     )
+    submission_service = SimpleNamespace(is_awaiting_text=AsyncMock(return_value=False))
 
     await confirm_profile(callback, user_service, profile_service, onboarding_service)
     profile_service.confirm.assert_awaited_once()
@@ -217,7 +221,9 @@ async def test_profile_confirmation_and_edit_flow() -> None:
 
     message = fake_message()
     message.text = "Senior Backend Developer"
-    await apply_profile_edit(message, user_service, profile_service, onboarding_service)
+    await apply_profile_edit(
+        message, user_service, profile_service, onboarding_service, submission_service
+    )
     profile_service.apply_pending_edit.assert_awaited_once()
     assert "Изменение сохранено" in message.answer.await_args.args[0]
 
@@ -232,7 +238,10 @@ async def test_work_mode_callback_toggles_without_advancing() -> None:
         answer=AsyncMock(),
     )
     user_id = uuid4()
-    user_service = SimpleNamespace(register=AsyncMock(return_value=user_id))
+    user_service = SimpleNamespace(
+        register=AsyncMock(return_value=user_id),
+        has_required_consent=AsyncMock(return_value=True),
+    )
     onboarding_service = SimpleNamespace(
         toggle_work_mode=AsyncMock(
             return_value=OnboardingStep(
@@ -261,7 +270,10 @@ async def test_main_menu_buttons_are_handled() -> None:
         data="menu:new_jobs",
         answer=AsyncMock(),
     )
-    user_service = SimpleNamespace(register=AsyncMock(return_value=user_id))
+    user_service = SimpleNamespace(
+        register=AsyncMock(return_value=user_id),
+        has_required_consent=AsyncMock(return_value=True),
+    )
     profile_service = SimpleNamespace(
         latest_confirmed=AsyncMock(
             return_value=SimpleNamespace(
@@ -292,20 +304,106 @@ async def test_main_menu_buttons_are_handled() -> None:
             ]
         )
     )
+    submission_service = SimpleNamespace(
+        begin=AsyncMock(), latest_private=AsyncMock(return_value=[])
+    )
 
     await main_menu_callback(
-        callback, user_service, profile_service, onboarding_service, vacancy_service
+        callback,
+        user_service,
+        profile_service,
+        onboarding_service,
+        vacancy_service,
+        submission_service,
     )
     assert "Python Developer" in message.answer.await_args.args[0]
 
     callback.data = "menu:profile"
     await main_menu_callback(
-        callback, user_service, profile_service, onboarding_service, vacancy_service
+        callback,
+        user_service,
+        profile_service,
+        onboarding_service,
+        vacancy_service,
+        submission_service,
     )
     assert "Мой профиль" in message.answer.await_args.args[0]
 
     callback.data = "menu:settings"
     await main_menu_callback(
-        callback, user_service, profile_service, onboarding_service, vacancy_service
+        callback,
+        user_service,
+        profile_service,
+        onboarding_service,
+        vacancy_service,
+        submission_service,
     )
     onboarding_service.start.assert_awaited_with(user_id)
+
+    callback.data = "menu:add_job"
+    await main_menu_callback(
+        callback,
+        user_service,
+        profile_service,
+        onboarding_service,
+        vacancy_service,
+        submission_service,
+    )
+    submission_service.begin.assert_awaited_with(user_id)
+
+    callback.data = "menu:personal_jobs"
+    await main_menu_callback(
+        callback,
+        user_service,
+        profile_service,
+        onboarding_service,
+        vacancy_service,
+        submission_service,
+    )
+    submission_service.latest_private.assert_awaited_with(user_id)
+
+
+async def test_manual_vacancy_is_reviewed_and_saved_privately() -> None:
+    user_id = uuid4()
+    submission_id = uuid4()
+    message = fake_message()
+    message.text = "Vacancy: Python Developer. We are hiring. Requirements: Python and FastAPI."
+    user_service = SimpleNamespace(
+        register=AsyncMock(return_value=user_id),
+        has_required_consent=AsyncMock(return_value=True),
+    )
+    submission = SimpleNamespace(
+        id=submission_id,
+        status="awaiting_confirmation",
+        title="Python Developer",
+        company="Example",
+        location="Yerevan",
+        workplace_type="hybrid",
+    )
+    submission_service = SimpleNamespace(
+        begin=AsyncMock(),
+        is_awaiting_text=AsyncMock(return_value=True),
+        submit=AsyncMock(return_value=SubmissionResult(submission)),
+        confirm_private=AsyncMock(return_value=True),
+    )
+
+    await add_job_command(message, user_service, submission_service)
+    submission_service.begin.assert_awaited_once_with(user_id)
+
+    await apply_profile_edit(
+        message,
+        user_service,
+        SimpleNamespace(apply_pending_edit=AsyncMock()),
+        SimpleNamespace(answer=AsyncMock()),
+        submission_service,
+    )
+    assert "Проверьте вакансию" in message.answer.await_args.args[0]
+
+    callback = SimpleNamespace(
+        from_user=fake_sender(),
+        message=message,
+        data=f"vacancy:keep:{submission_id}",
+        answer=AsyncMock(),
+    )
+    await submission_callback(callback, user_service, submission_service)
+    submission_service.confirm_private.assert_awaited_once_with(user_id, submission_id, True)
