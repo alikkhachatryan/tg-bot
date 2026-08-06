@@ -140,11 +140,16 @@ async def parse_resume_profile(ctx: dict[str, Any], resume_id: UUID) -> str:
         )
     except AIProviderError as exc:
         await _finish_parse_run(sessions, run_id, "failed", exc.code)
+        message = (
+            "На балансе DeepSeek недостаточно средств. Пополните баланс и повторите обработку."
+            if exc.code == "insufficient_balance"
+            else "AI-сервис временно не смог разобрать резюме. Попробуйте обработку позже."
+        )
         await _notify(
             sessions,
             bot,
             document.user_id,
-            "AI-сервис временно не смог разобрать резюме. Попробуйте обработку позже.",
+            message,
         )
         return "ai_failed"
     except Exception as exc:

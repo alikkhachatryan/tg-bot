@@ -8,15 +8,22 @@ from pydantic import ValidationError
 from app.ai.provider import AIProviderError, AIResult
 from app.ai.schemas import CandidateProfileData
 
-PROMPT_VERSION = "resume-profile-v1"
+PROMPT_VERSION = "resume-profile-v2"
 SYSTEM_PROMPT = """You extract facts from resumes. Return one JSON object only.
-The JSON must follow the supplied example shape. Never invent experience, dates, skills,
-education, contacts, achievements, or preferences. Use null or empty arrays when the resume
-does not provide a value. Keep evidence concise and derived only from the resume.
+The JSON must follow the supplied example shape and nested object types exactly. Never invent
+experience, dates, skills, education, contacts, achievements, or preferences. Use null or
+empty arrays when the resume does not provide a value. Keep evidence concise and derived only
+from the resume. In particular, every skill must be an object, never a plain string.
 JSON example:
 {"full_name":null,"current_title":null,"desired_roles":[],"professional_summary":null,
-"total_experience_months":null,"skills":[],"work_experience":[],"projects":[],
-"education":[],"languages":[],"location":null,
+"total_experience_months":null,
+"skills":[{"name":"Python","level":null,"experience_months":null,"evidence":"Listed in skills"}],
+"work_experience":[{"company":null,"title":"Software Developer","start_date":null,
+"end_date":null,"responsibilities":[],"achievements":[],"technologies":[]}],
+"projects":[{"name":"Example project","description":null,"technologies":[]}],
+"education":[{"institution":"Example institution","degree":null,"field":null,
+"start_date":null,"end_date":null}],
+"languages":[{"name":"English","level":null}],"location":null,
 "contacts":{"email":null,"phone":null,"linkedin":null,"github":null}}"""
 
 
@@ -55,6 +62,7 @@ class DeepSeekAIProvider:
                 },
             ],
             "response_format": {"type": "json_object"},
+            "thinking": {"type": "disabled"},
             "temperature": 0,
             "max_tokens": 6000,
         }
@@ -75,7 +83,7 @@ class DeepSeekAIProvider:
             content = body["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
                 raise AIProviderError("empty_response")
-            profile = CandidateProfileData.model_validate(json.loads(content))
+            profile = CandidateProfileData.model_validate(_normalize_profile(json.loads(content)))
             usage = body.get("usage") or {}
             return AIResult(
                 profile=profile,
@@ -102,6 +110,8 @@ class DeepSeekAIProvider:
                     await asyncio.sleep(2**attempt)
                     continue
                 raise AIProviderError("temporarily_unavailable")
+            if response.status_code == 402:
+                raise AIProviderError("insufficient_balance")
             if response.is_error:
                 raise AIProviderError("request_rejected")
             return response
@@ -114,3 +124,18 @@ class DeepSeekAIProvider:
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def _normalize_profile(value: object) -> object:
+    if not isinstance(value, dict):
+        return value
+    normalized = dict(value)
+    skills = normalized.get("skills")
+    if isinstance(skills, list):
+        normalized["skills"] = [
+            {"name": skill, "level": None, "experience_months": None, "evidence": None}
+            if isinstance(skill, str)
+            else skill
+            for skill in skills
+        ]
+    return normalized
