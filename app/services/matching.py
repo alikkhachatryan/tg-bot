@@ -21,11 +21,73 @@ _YEARS_RE = re.compile(r"\b(\d{1,2})\s*\+?\s*(?:years?|yrs?|лет|года?)\b"
 _GENERIC_ROLE_WORDS = {
     "developer",
     "engineer",
+    "manager",
+    "analyst",
+    "designer",
+    "consultant",
+    "administrator",
+    "specialist",
+    "lead",
+    "head",
     "разработчик",
     "инженер",
-    "specialist",
+    "менеджер",
+    "аналитик",
+    "дизайнер",
+    "консультант",
+    "администратор",
     "специалист",
+    "руководитель",
 }
+_ROLE_FAMILY_ALIASES = {
+    "software": {
+        "developer",
+        "engineer",
+        "programmer",
+        "разработчик",
+        "инженер",
+        "программист",
+        "ծրագրավորող",
+    },
+    "web": {"backend", "frontend", "fullstack", "web", "веб", "бекенд", "фронтенд"},
+    "quality": {
+        "qa",
+        "tester",
+        "testing",
+        "test",
+        "тестировщик",
+        "тестирование",
+    },
+    "data": {"data", "analyst", "analytics", "аналитик", "аналитика"},
+    "operations": {"devops", "sre", "platform", "infrastructure", "инфраструктура"},
+    "design": {"designer", "design", "ux", "ui", "дизайнер", "дизайн"},
+    "product": {"product", "продукт", "продакт"},
+    "project": {"project", "delivery", "scrum", "проект", "проектный"},
+    "management": {
+        "manager",
+        "management",
+        "lead",
+        "head",
+        "director",
+        "менеджер",
+        "руководитель",
+        "директор",
+    },
+    "sales": {"sales", "account", "sale", "продажи", "продаж", "продавец"},
+    "support": {"support", "assistant", "customer", "поддержка", "ассистент"},
+    "marketing": {"marketing", "marketer", "маркетинг", "маркетолог"},
+    "implementation": {
+        "consultant",
+        "integrator",
+        "administrator",
+        "implementation",
+        "консультант",
+        "интегратор",
+        "администратор",
+        "внедрение",
+    },
+}
+_TECH_ROLE_FAMILIES = {"software", "web", "quality", "data", "operations", "implementation"}
 _SENIORITY_MONTHS = {"junior": 0, "middle": 18, "mid": 18, "senior": 36, "lead": 60}
 _TECHNOLOGIES = {
     "python",
@@ -258,11 +320,14 @@ def calculate_match(
 
 def _role_score(profile: CandidateProfile, preference: SearchPreference, vacancy: Vacancy) -> int:
     title_tokens = set(_tokens(vacancy.title))
-    roles = [*preference.desired_roles, *profile.desired_roles]
+    desired_roles = list(dict.fromkeys([*preference.desired_roles, *profile.desired_roles]))
+    roles = list(desired_roles)
     if profile.current_title:
         roles.append(profile.current_title)
     if not roles:
         return 70
+    title_families = _role_families(vacancy.title)
+    candidate_families = {family for role in roles for family in _role_families(role)}
     best = 0
     for role in roles:
         role_tokens = set(_tokens(role))
@@ -278,7 +343,23 @@ def _role_score(profile: CandidateProfile, preference: SearchPreference, vacancy
     candidate_skills = {_normalize(str(item.get("name", ""))) for item in profile.skills}
     if any(skill and _contains_phrase(vacancy.title, skill) for skill in candidate_skills):
         best = max(best, 75)
+    desired_in_description = {
+        _normalize(role)
+        for role in desired_roles
+        if role.strip() and _contains_phrase(vacancy.description, role)
+    }
+    if desired_in_description and title_families & candidate_families:
+        best = max(best, 90)
+    elif desired_in_description & candidate_skills and title_families & _TECH_ROLE_FAMILIES:
+        best = max(best, 85)
+    elif title_families & candidate_families:
+        best = max(best, 65)
     return best
+
+
+def _role_families(value: str) -> set[str]:
+    tokens = set(_tokens(value.replace("full-stack", "fullstack")))
+    return {family for family, aliases in _ROLE_FAMILY_ALIASES.items() if tokens & aliases}
 
 
 def _skill_score(profile: CandidateProfile, vacancy_text: str) -> tuple[int, list[str], list[str]]:

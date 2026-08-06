@@ -91,6 +91,74 @@ def test_explainable_match_scores_profile_components() -> None:
 
 
 @pytest.mark.parametrize(
+    ("desired_role", "current_title", "parent_title", "description"),
+    [
+        (
+            "Bitrix",
+            "Bitrix Developer",
+            "PHP Developer",
+            "Develop corporate portals with PHP and 1C-Bitrix.",
+        ),
+        (
+            "Laravel",
+            "PHP Developer",
+            "Backend PHP Developer",
+            "Build web applications with PHP, Laravel and PostgreSQL.",
+        ),
+        (
+            "WordPress",
+            "Web Developer",
+            "PHP Web Developer",
+            "Create custom WordPress themes and plugins using PHP.",
+        ),
+    ],
+)
+def test_specialization_in_description_matches_compatible_parent_role(
+    desired_role: str,
+    current_title: str,
+    parent_title: str,
+    description: str,
+) -> None:
+    candidate = profile(
+        current_title=current_title,
+        desired_roles=[desired_role],
+        skills=[{"name": desired_role}, {"name": "PHP"}],
+    )
+    search = preference(desired_roles=[desired_role])
+
+    result = calculate_match(
+        candidate,
+        search,
+        vacancy(title=parent_title, description=description),
+        Settings(_env_file=None).matching_weights,
+    )
+
+    assert result.eligible is True
+    assert result.components["role"] >= 85
+    assert any(desired_role in reason for reason in result.explanations)
+
+
+def test_tool_mentioned_in_unrelated_sales_job_does_not_match_developer_role() -> None:
+    result = calculate_match(
+        profile(
+            current_title="Bitrix Developer",
+            desired_roles=["Bitrix"],
+            skills=[{"name": "Bitrix"}, {"name": "PHP"}],
+        ),
+        preference(desired_roles=["Bitrix"]),
+        vacancy(
+            title="Sales Manager",
+            description="Manage customer records and sales tasks in Bitrix CRM.",
+        ),
+        Settings(_env_file=None).matching_weights,
+    )
+
+    assert result.eligible is False
+    assert result.components["role"] == 0
+    assert "Роль не соответствует выбранным направлениям" in result.filter_reasons
+
+
+@pytest.mark.parametrize(
     ("job", "expected_reason"),
     [
         (
