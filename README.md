@@ -58,6 +58,10 @@ docker compose --profile polling up bot-polling
 docker compose --profile storage up minio
 ```
 
+PostgreSQL is exposed to the Windows host on port `5433` by default so it does not
+collide with an existing local PostgreSQL installation on `5432`. Containers still use
+`postgres:5432`; override only the host port through `POSTGRES_PORT` when needed.
+
 The production path uses Telegram webhook delivery through the FastAPI app. The polling
 service is only for local development and must not run alongside the webhook consumer.
 
